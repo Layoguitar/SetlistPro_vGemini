@@ -78,10 +78,11 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [paperMode, setPaperMode] = useState(true); 
   const [transposeStep, setTransposeStep] = useState(0);
 
-  // --- AUTO SCROLL ---
+  // --- AUTO SCROLL INTELIGENTE ---
   const [isScrolling, setIsScrolling] = useState(false);
-  const [scrollSpeed, setScrollSpeed] = useState(1); // 0.5 = Lento, 2 = Rápido
+  const [scrollSpeed, setScrollSpeed] = useState(1);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollAccumulator = useRef(0); // LA ALCANCÍA DE PÍXELES 🐷
 
   // --- SINCRONIZACIÓN ---
   const [role, setRole] = useState<'admin' | 'member' | null>(null);
@@ -90,17 +91,25 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
 
   useEffect(() => { itemsRef.current = items; }, [items]);
 
-  // Lógica de Auto-Scroll
+  // Lógica de Auto-Scroll Mejorada para Móvil
   useEffect(() => {
     let animationFrameId: number;
     
     const scroll = () => {
         if (scrollContainerRef.current && isScrolling) {
-            // Movemos el scroll pixel a pixel
-            scrollContainerRef.current.scrollTop += (scrollSpeed * 0.5); 
+            // Sumamos decimales a la alcancía
+            // Multiplicamos por 0.5 para que la velocidad 1 sea suave
+            scrollAccumulator.current += (scrollSpeed * 0.5); 
             
-            // Si llegamos al final, paramos
-            if (scrollContainerRef.current.scrollTop + scrollContainerRef.current.clientHeight >= scrollContainerRef.current.scrollHeight - 5) {
+            // Solo movemos si tenemos al menos 1 píxel completo
+            if (scrollAccumulator.current >= 1) {
+                const pixelsToMove = Math.floor(scrollAccumulator.current);
+                scrollContainerRef.current.scrollTop += pixelsToMove;
+                scrollAccumulator.current -= pixelsToMove; // Guardamos el cambio
+            }
+            
+            // Detectar fin de página
+            if (scrollContainerRef.current.scrollTop + scrollContainerRef.current.clientHeight >= scrollContainerRef.current.scrollHeight - 2) {
                 setIsScrolling(false);
             } else {
                 animationFrameId = requestAnimationFrame(scroll);
@@ -110,14 +119,16 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
 
     if (isScrolling) {
         animationFrameId = requestAnimationFrame(scroll);
+    } else {
+        cancelAnimationFrame(animationFrameId);
     }
 
     return () => cancelAnimationFrame(animationFrameId);
   }, [isScrolling, scrollSpeed]);
 
-  // Resetear scroll al cambiar de canción
   useEffect(() => {
      setIsScrolling(false);
+     scrollAccumulator.current = 0;
      if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
   }, [selectedItem?.id]);
 
@@ -253,7 +264,8 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   };
 
   return (
-    <div className={`fixed inset-0 z-50 flex h-screen w-full overflow-hidden ${deskTheme.bg} transition-colors duration-300`}>
+    // FIX: h-[100dvh] para móviles
+    <div className={`fixed inset-0 z-50 flex h-[100dvh] w-full overflow-hidden ${deskTheme.bg} transition-colors duration-300`}>
       {isMobile && sidebarOpen && (
         <div className="fixed inset-0 bg-black/80 z-[60] backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
       )}
@@ -293,14 +305,12 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
             )}
             
             <div className="flex items-center gap-2">
-                {/* BOTÓN PLAY (AUTO SCROLL) */}
+                {/* BOTÓN PLAY */}
                 {selectedItem?.type === 'song' && (
                     <div className="flex items-center gap-1 bg-blue-600 text-white p-1 rounded-xl shadow-lg animate-in fade-in">
                         <button onClick={() => setIsScrolling(!isScrolling)} className="p-2 hover:bg-white/20 rounded-lg transition-colors">
                             {isScrolling ? <Pause size={18} className="animate-pulse" /> : <Play size={18} className="ml-0.5" />}
                         </button>
-                        
-                        {/* Controles de velocidad (solo si está activo o pausado) */}
                         <div className="flex flex-col gap-0.5 px-1 border-l border-white/20">
                             <button onClick={() => setScrollSpeed(s => Math.min(5, s + 0.5))} className="hover:text-blue-200"><ChevronsUp size={10} /></button>
                             <span className="text-[9px] font-bold font-mono leading-none text-center">{scrollSpeed}x</span>
@@ -312,7 +322,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                 {role && (
                     <button 
                         onClick={() => setSyncEnabled(!syncEnabled)} 
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border backdrop-blur-md shadow-lg transition-all ${syncEnabled ? 'bg-emerald-500 text-white border-emerald-400' : 'bg-black/60 text-gray-400 border-white/10 hover:bg-white/10'}`}
+                        className={`hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border backdrop-blur-md shadow-lg transition-all ${syncEnabled ? 'bg-emerald-500 text-white border-emerald-400' : 'bg-black/60 text-gray-400 border-white/10 hover:bg-white/10'}`}
                     >
                         {syncEnabled ? <Zap size={14} className="fill-current"/> : <Radio size={14} />}
                         {syncEnabled ? (role === 'admin' ? 'TRANSMITIENDO' : 'SINCRONIZADO') : 'SYNC OFF'}
@@ -340,7 +350,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
 
          {selectedItem ? (
             <div 
-                // REF PARA EL AUTO SCROLL
                 ref={scrollContainerRef}
                 className={`flex-1 overflow-y-auto scroll-smooth ${selectedItem.type === 'song' ? 'p-2 md:p-8' : 'p-0'} flex flex-col items-center gap-4 md:gap-6`}
             >
