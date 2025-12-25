@@ -2,8 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-// ✅ CORREGIDO: Agregué 'Music' a los imports
-import { ArrowLeft, Wifi, Maximize2, Minimize2, Type, Moon, Columns, FileText, AlignJustify, AlignLeft, Music } from 'lucide-react';
+import { ArrowLeft, Wifi, Maximize2, Minimize2, Type, Moon, Columns, FileText, AlignJustify, AlignLeft, Music, Menu, X } from 'lucide-react';
 import type { SetlistItem } from '@/types/database';
 
 interface LiveSetlistProps {
@@ -16,13 +15,31 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [setlistName, setSetlistName] = useState("");
   const [selectedItem, setSelectedItem] = useState<SetlistItem | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   
+  // ESTADOS DE INTERFAZ
+  const [sidebarOpen, setSidebarOpen] = useState(true); // En escritorio empieza abierto
+  const [isMobile, setIsMobile] = useState(false); // Detectar si es celular
+
   // CONFIGURACIÓN VISUAL
   const [fontSize, setFontSize] = useState(14);
   const [paperMode, setPaperMode] = useState(true); 
   const [twoColumns, setTwoColumns] = useState(true);
   const [columnFillBalance, setColumnFillBalance] = useState(false);
+
+  // DETECTAR TAMAÑO DE PANTALLA
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768; // 768px es el estándar de tablets/moviles
+      setIsMobile(mobile);
+      if (mobile) setSidebarOpen(false); // Si es movil, cerrar barra al inicio
+    };
+    
+    // Ejecutar al inicio
+    handleResize(); 
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const fetchData = async () => {
     const { data: setlist } = await supabase.from('setlists').select('name').eq('id', setlistId).single();
@@ -77,9 +94,9 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     let currentPage: { title: string, body: string[] }[] = [];
     let currentHeight = 0; 
     
-    // Si estamos en 1 columna, caben menos cosas verticalmente porque se ve mejor con letra más grande
-    // Si estamos en 2 columnas, aprovechamos más el alto.
-    const PAGE_HEIGHT_LIMIT = twoColumns ? 52 : 45; 
+    // EN MÓVIL: Caben menos líneas porque la pantalla es angosta y el texto hace "wrap" (salto de línea)
+    // Así que reducimos el límite si es móvil para evitar que se corte.
+    const PAGE_HEIGHT_LIMIT = isMobile ? 35 : (twoColumns ? 52 : 45); 
 
     sections.forEach(section => {
       const sectionHeight = 3 + section.body.length;
@@ -105,7 +122,8 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   // TEMAS
   const deskTheme = {
     bg: paperMode ? 'bg-zinc-800' : 'bg-black',
-    sidebar: paperMode ? 'bg-zinc-900 border-zinc-700 text-gray-400' : 'bg-black border-zinc-800 text-gray-500',
+    // La barra lateral ahora tiene fondo sólido siempre para tapar el contenido en móvil
+    sidebar: paperMode ? 'bg-zinc-900 border-zinc-700 text-gray-400' : 'bg-zinc-950 border-zinc-800 text-gray-500',
     itemActive: 'bg-blue-600 text-white border-blue-400',
   };
 
@@ -122,87 +140,130 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   return (
     <div className={`fixed inset-0 z-50 flex h-screen w-full overflow-hidden ${deskTheme.bg} transition-colors duration-300`}>
       
-      {/* BARRA LATERAL */}
-      <div className={`${sidebarOpen ? 'w-80' : 'w-0'} transition-all duration-300 border-r flex flex-col shrink-0 ${deskTheme.sidebar}`}>
+      {/* --- BARRA LATERAL RESPONSIVA --- */}
+      {/* Fondo oscuro semi-transparente para móvil cuando el menú está abierto */}
+      {isMobile && sidebarOpen && (
+        <div 
+            className="fixed inset-0 bg-black/80 z-40 backdrop-blur-sm"
+            onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <div 
+        className={`
+            fixed md:relative z-50 h-full flex flex-col border-r transition-all duration-300
+            ${deskTheme.sidebar}
+            ${sidebarOpen ? 'w-[80%] md:w-80 translate-x-0' : 'w-0 -translate-x-full md:translate-x-0 md:w-0 overflow-hidden'}
+        `}
+      >
         <div className="p-4 border-b border-current/10 flex items-center justify-between shrink-0">
             <button onClick={onBack} className="flex items-center gap-2 text-sm hover:text-white transition-colors">
                 <ArrowLeft size={16} /> Salir
             </button>
-            {isConnected && <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full animate-pulse flex gap-1"><Wifi size={10}/> LIVE</span>}
+            {/* Botón cerrar menú en móvil */}
+            {isMobile && (
+                <button onClick={() => setSidebarOpen(false)} className="p-1 text-white">
+                    <X size={24} />
+                </button>
+            )}
         </div>
-        <div className="p-4 border-b border-current/10 shrink-0">
-             <h2 className="font-bold text-lg leading-tight truncate text-white">{setlistName}</h2>
-             <p className="text-xs mt-1 opacity-60">{items.length} ítems</p>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-            {items.map((item, index) => (
-                <div key={item.id} onClick={() => setSelectedItem(item)} className={`p-4 border-b border-transparent cursor-pointer flex gap-3 items-center border-l-4 hover:bg-white/5 ${selectedItem?.id === item.id ? deskTheme.itemActive : 'border-l-transparent'}`}>
-                    <div className="font-mono font-bold w-6 text-center opacity-50">{index + 1}</div>
-                    <div className="flex-1 min-w-0">
-                        <div className={`font-bold truncate ${selectedItem?.id === item.id ? 'text-white' : ''}`}>{item.title_override || item.song?.title}</div>
-                        {item.type === 'song' && <div className="text-xs opacity-60 mt-1">{item.key_override || item.song?.default_key} • {item.song?.bpm} bpm</div>}
-                    </div>
+        
+        {sidebarOpen && (
+            <>
+                <div className="p-4 border-b border-current/10 shrink-0">
+                    <h2 className="font-bold text-lg leading-tight truncate text-white">{setlistName}</h2>
+                    <p className="text-xs mt-1 opacity-60 flex items-center gap-2">
+                        {items.length} ítems 
+                        {isConnected && <span className="text-emerald-400 font-bold">• LIVE</span>}
+                    </p>
                 </div>
-            ))}
-        </div>
+                <div className="flex-1 overflow-y-auto">
+                    {items.map((item, index) => (
+                        <div 
+                            key={item.id} 
+                            onClick={() => {
+                                setSelectedItem(item);
+                                if (isMobile) setSidebarOpen(false); // Cerrar menú al elegir canción en móvil
+                            }} 
+                            className={`p-4 border-b border-transparent cursor-pointer flex gap-3 items-center border-l-4 hover:bg-white/5 ${selectedItem?.id === item.id ? deskTheme.itemActive : 'border-l-transparent'}`}
+                        >
+                            <div className="font-mono font-bold w-6 text-center opacity-50">{index + 1}</div>
+                            <div className="flex-1 min-w-0">
+                                <div className={`font-bold truncate ${selectedItem?.id === item.id ? 'text-white' : ''}`}>{item.title_override || item.song?.title}</div>
+                                {item.type === 'song' && <div className="text-xs opacity-60 mt-1">{item.key_override || item.song?.default_key} • {item.song?.bpm} bpm</div>}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </>
+        )}
       </div>
 
-      {/* VISOR */}
-      <div className="flex-1 flex flex-col relative h-full overflow-hidden">
+      {/* --- VISOR PRINCIPAL --- */}
+      <div className="flex-1 flex flex-col relative h-full overflow-hidden w-full">
          
-         {/* BARRA DE HERRAMIENTAS (Solo aparece si es una canción) */}
-         {selectedItem?.type === 'song' && (
-            <div className="absolute top-4 right-6 flex items-center gap-2 z-50 print:hidden">
-                <button onClick={() => setPaperMode(!paperMode)} className="p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-md shadow-sm" title="Tema">
-                    {paperMode ? <FileText size={20} /> : <Moon size={20} />}
+         {/* BARRA DE HERRAMIENTAS FLOTANTE (ADAPTADA A MÓVIL) */}
+         <div className="absolute top-4 right-4 md:right-6 flex items-center gap-2 z-40 print:hidden">
+            
+            {/* Botón Menú Hamburguesa (Solo visible si el menú está cerrado) */}
+            {!sidebarOpen && (
+                <button 
+                    onClick={() => setSidebarOpen(true)} 
+                    className="p-2.5 rounded-full bg-blue-600 text-white shadow-lg animate-in fade-in"
+                >
+                    <Menu size={20} />
                 </button>
-                <button onClick={() => setTwoColumns(!twoColumns)} className="hidden md:flex p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-md shadow-sm" title="Columnas">
-                    <Columns size={20} />
-                </button>
-                {twoColumns && (
-                    <button onClick={() => setColumnFillBalance(!columnFillBalance)} className="hidden md:flex p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-md shadow-sm" title="Relleno">
-                        {columnFillBalance ? <AlignJustify size={20} /> : <AlignLeft size={20} />}
+            )}
+
+            {selectedItem?.type === 'song' && (
+                <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md p-1.5 rounded-xl border border-white/10 shadow-lg">
+                    <button onClick={() => setPaperMode(!paperMode)} className="p-2 rounded-lg hover:bg-white/20 text-white transition-all">
+                        {paperMode ? <FileText size={18} /> : <Moon size={18} />}
                     </button>
-                )}
-                <div className="w-px h-6 bg-white/20 mx-1"></div>
-                <button onClick={() => setFontSize(s => Math.max(10, s - 1))} className="p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-md"><Type size={14} className="scale-75"/></button>
-                <button onClick={() => setFontSize(s => Math.min(24, s + 1))} className="p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-md"><Type size={18}/></button>
-                <div className="w-px h-6 bg-white/20 mx-1"></div>
-                <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-md">
-                    {sidebarOpen ? <Maximize2 size={18} /> : <Minimize2 size={18} />}
-                </button>
-            </div>
-         )}
+                    
+                    {/* Ocultamos botón de columnas en móvil (siempre será 1 columna) */}
+                    <button onClick={() => setTwoColumns(!twoColumns)} className="hidden md:flex p-2 rounded-lg hover:bg-white/20 text-white transition-all">
+                        <Columns size={18} />
+                    </button>
+
+                    <div className="w-px h-5 bg-white/20 mx-0.5"></div>
+                    
+                    <button onClick={() => setFontSize(s => Math.max(10, s - 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={14} className="scale-75"/></button>
+                    <button onClick={() => setFontSize(s => Math.min(32, s + 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={18}/></button>
+                </div>
+            )}
+         </div>
 
          {selectedItem ? (
-            <div className={`flex-1 overflow-y-auto ${selectedItem.type === 'song' ? 'p-4 md:p-8' : 'p-0'} flex flex-col items-center gap-6`}>
+            <div className={`flex-1 overflow-y-auto ${selectedItem.type === 'song' ? 'p-2 md:p-8' : 'p-0'} flex flex-col items-center gap-4 md:gap-6`}>
                 
-                {/* --- MODO CANCIÓN (HOJAS A4) --- */}
+                {/* --- RENDERIZADO DE PÁGINAS --- */}
                 {selectedItem.type === 'song' ? (
                    pages.length > 0 ? (
                      pages.map((pageSections, pageIndex) => (
                         <div 
                             key={pageIndex}
                             className={`
-                                w-full max-w-[210mm] h-[297mm] transition-all duration-300 relative shrink-0
+                                w-full md:max-w-[210mm] transition-all duration-300 relative shrink-0
                                 ${paperTheme.bg} ${paperTheme.text} ${paperTheme.shadow}
-                                p-[15mm] rounded-sm flex flex-col
+                                p-4 md:p-[20mm] rounded-sm flex flex-col
+                                ${isMobile ? 'min-h-[85vh] h-auto mb-4' : 'h-[297mm]'} 
                             `}
-                            style={{ fontSize: `${fontSize}px` }}
+                            style={{ fontSize: `${isMobile ? fontSize + 2 : fontSize}px` }} // Letra un poco más grande en móvil
                         >
                             {pageIndex === 0 ? (
                                 <div className={`mb-6 border-b-2 pb-2 flex justify-between items-end shrink-0 ${paperTheme.headerBorder}`}>
-                                    <div>
-                                        <h1 className="text-3xl font-black leading-tight tracking-tight uppercase truncate max-w-[400px]">
+                                    <div className="max-w-[70%]">
+                                        <h1 className="text-2xl md:text-3xl font-black leading-tight tracking-tight uppercase break-words">
                                             {selectedItem.title_override || selectedItem.song?.title}
                                         </h1>
-                                        <p className={`text-sm mt-1 font-bold ${paperTheme.metaText}`}>
+                                        <p className={`text-xs md:text-sm mt-1 font-bold ${paperTheme.metaText}`}>
                                             {selectedItem.song?.artist || 'Autor desconocido'}
                                         </p>
                                     </div>
                                     <div className="text-right flex flex-col items-end shrink-0">
-                                        <div className="text-3xl font-bold">{selectedItem.key_override || selectedItem.song?.default_key}</div>
-                                        <div className={`text-xs uppercase tracking-widest font-bold ${paperTheme.metaText}`}>
+                                        <div className="text-2xl md:text-3xl font-bold">{selectedItem.key_override || selectedItem.song?.default_key}</div>
+                                        <div className={`text-[10px] md:text-xs uppercase tracking-widest font-bold ${paperTheme.metaText}`}>
                                             {selectedItem.song?.bpm} BPM
                                         </div>
                                     </div>
@@ -213,16 +274,16 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                 <div 
                                     className={`
                                         h-full w-full font-mono whitespace-pre-wrap leading-relaxed
-                                        ${twoColumns ? 'columns-2 gap-[10mm]' : 'columns-1 max-w-3xl mx-auto'}
+                                        ${twoColumns && !isMobile ? 'columns-2 gap-[10mm]' : 'columns-1'}
                                     `}
                                     style={{ columnFill: columnFillBalance ? 'balance' : 'auto' }} 
                                 >
                                     {pageSections.map((section, idx) => (
-                                        <div key={idx} className="break-inside-avoid mb-5 inline-block w-full">
+                                        <div key={idx} className="break-inside-avoid mb-6 inline-block w-full">
                                             {section.title && (
-                                                <div className="mb-1">
+                                                <div className="mb-2">
                                                     <span className={`
-                                                        inline-block px-2 py-0.5 rounded text-[0.75em] font-black uppercase tracking-widest border
+                                                        inline-block px-3 py-1 rounded-full text-[0.8em] font-black uppercase tracking-widest border shadow-sm
                                                         ${paperTheme.sectionTitleBg} ${paperTheme.sectionTitleText}
                                                     `}>
                                                         {section.title}
@@ -231,7 +292,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                             )}
                                             <div className="opacity-90 pl-1">
                                                 {section.body.map((line, lIdx) => (
-                                                    <div key={lIdx} className="min-h-[1.1em]">
+                                                    <div key={lIdx} className="min-h-[1.2em]">
                                                     {paperMode && line.trim().length < 20 && /[A-G]/.test(line) 
                                                         ? <span className="font-bold text-blue-600">{line}</span> 
                                                         : line}
@@ -243,7 +304,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                 </div>
                             </div>
 
-                            <div className="mt-auto pt-2 border-t border-current/10 flex justify-between text-[9px] opacity-40 uppercase tracking-widest font-bold shrink-0">
+                            <div className="mt-auto pt-4 border-t border-current/10 flex justify-between text-[9px] opacity-40 uppercase tracking-widest font-bold shrink-0">
                                 <span>SetlistPro</span>
                                 <span>{pageIndex + 1} / {pages.length}</span>
                             </div>
@@ -253,21 +314,27 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                      <div className="text-white opacity-50 mt-20">Sin contenido.</div>
                    )
                 ) : (
-                   // --- MODO BLOQUE (SIMPLE, PANTALLA COMPLETA) ---
-                   <div className="flex-1 w-full h-full flex items-center justify-center p-10 bg-black/20 backdrop-blur-sm">
-                      <div className="text-center">
-                          <h1 className="text-6xl md:text-8xl font-serif italic text-white/90 drop-shadow-2xl">
+                   // --- MODO BLOQUE (SIMPLE) ---
+                   <div className="flex-1 w-full h-full flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm min-h-[50vh]">
+                      <div className="text-center w-full">
+                          <h1 className="text-4xl md:text-8xl font-serif italic text-white/90 drop-shadow-2xl break-words">
                               {selectedItem.title_override}
                           </h1>
-                          <div className="w-32 h-1 bg-white/30 mx-auto mt-8 rounded-full"></div>
+                          <div className="w-20 md:w-32 h-1 bg-white/30 mx-auto mt-6 md:mt-8 rounded-full"></div>
                       </div>
                    </div>
                 )}
             </div>
          ) : (
-            <div className="h-full flex flex-col items-center justify-center text-gray-500">
-                <Music size={64} className="mb-4 opacity-20 text-white" />
-                <p className="text-gray-400">Selecciona una canción</p>
+            <div className="h-full flex flex-col items-center justify-center text-gray-500 p-4 text-center">
+                <Music size={48} className="mb-4 opacity-20 text-white" />
+                <p className="text-gray-400">Selecciona una canción del menú</p>
+                {/* Botón extra para abrir menú si no hay nada seleccionado */}
+                {!sidebarOpen && isMobile && (
+                    <button onClick={() => setSidebarOpen(true)} className="mt-4 text-blue-400 font-bold text-sm">
+                        Abrir Lista
+                    </button>
+                )}
             </div>
          )}
       </div>
