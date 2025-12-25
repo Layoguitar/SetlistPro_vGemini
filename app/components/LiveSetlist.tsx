@@ -78,11 +78,12 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [paperMode, setPaperMode] = useState(true); 
   const [transposeStep, setTransposeStep] = useState(0);
 
-  // --- AUTO SCROLL INTELIGENTE ---
+  // --- AUTO SCROLL INTELIGENTE (Versión Delta Time) ---
   const [isScrolling, setIsScrolling] = useState(false);
   const [scrollSpeed, setScrollSpeed] = useState(1);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const scrollAccumulator = useRef(0); 
+  const lastFrameTime = useRef<number>(0);
+  const scrollAccumulator = useRef(0);
 
   // --- SINCRONIZACIÓN ---
   const [role, setRole] = useState<'admin' | 'member' | null>(null);
@@ -91,29 +92,51 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
 
   useEffect(() => { itemsRef.current = items; }, [items]);
 
-  // Lógica de Auto-Scroll
+  // Lógica de Auto-Scroll Robusta para iOS
   useEffect(() => {
     let animationFrameId = 0;
 
-    const scroll = () => {
-        if (scrollContainerRef.current && isScrolling) {
-            scrollAccumulator.current += (scrollSpeed * 0.5); 
-            
-            if (scrollAccumulator.current >= 1) {
-                const pixelsToMove = Math.floor(scrollAccumulator.current);
-                scrollContainerRef.current.scrollTop += pixelsToMove;
-                scrollAccumulator.current -= pixelsToMove; 
-            }
-            
-            if (scrollContainerRef.current.scrollTop + scrollContainerRef.current.clientHeight >= scrollContainerRef.current.scrollHeight - 2) {
-                setIsScrolling(false);
-            } else {
-                animationFrameId = requestAnimationFrame(scroll);
-            }
+    const scroll = (timestamp: number) => {
+        if (!isScrolling || !scrollContainerRef.current) return;
+
+        if (lastFrameTime.current === 0) {
+            lastFrameTime.current = timestamp;
+            animationFrameId = requestAnimationFrame(scroll);
+            return;
         }
+
+        // Calcular delta (tiempo real pasado)
+        const deltaTime = timestamp - lastFrameTime.current;
+        lastFrameTime.current = timestamp;
+
+        // Velocidad base: 30 pixeles por segundo * multiplicador
+        const pixelsPerSecond = 30 * scrollSpeed;
+        const pixelsToMove = (pixelsPerSecond * deltaTime) / 1000;
+
+        // Acumular movimiento
+        scrollAccumulator.current += pixelsToMove;
+
+        // Si acumulamos más de 1px, movemos
+        if (scrollAccumulator.current >= 1) {
+            const move = Math.floor(scrollAccumulator.current);
+            // Usamos scrollBy que es más seguro en iOS
+            scrollContainerRef.current.scrollBy(0, move);
+            scrollAccumulator.current -= move;
+        }
+
+        // Chequear fin de página (con margen de error grande para evitar falsos positivos en iOS)
+        const { scrollTop, clientHeight, scrollHeight } = scrollContainerRef.current;
+        if (scrollTop + clientHeight >= scrollHeight - 50) {
+             // Solo paramos si REALMENTE llegamos al final, pero en bucle infinito dejamos que el usuario lo pare manual
+             // o añadimos un buffer grande. Por ahora, dejemos que siga intentando bajar.
+        }
+
+        animationFrameId = requestAnimationFrame(scroll);
     };
 
     if (isScrolling) {
+        lastFrameTime.current = 0;
+        scrollAccumulator.current = 0;
         animationFrameId = requestAnimationFrame(scroll);
     } 
 
@@ -346,8 +369,9 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
          {selectedItem ? (
             <div 
                 ref={scrollContainerRef}
-                // FIX CRÍTICO: Eliminada la clase "scroll-smooth" que bloqueaba el auto-scroll en iOS
+                // SIN scroll-smooth para que el JS mande
                 className={`flex-1 overflow-y-auto ${selectedItem.type === 'song' ? 'p-2 md:p-8' : 'p-0'} flex flex-col items-center gap-4 md:gap-6`}
+                style={{ scrollBehavior: 'auto' }} // Forza auto para anular cualquier CSS global
             >
                 {selectedItem.type === 'song' ? (
                    pages.length > 0 ? (
