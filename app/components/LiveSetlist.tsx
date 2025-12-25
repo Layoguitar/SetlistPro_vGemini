@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { ArrowLeft, Wifi, Type, Moon, FileText, Music, Menu, X, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, Wifi, Type, Moon, FileText, Music, Menu, X, Minus, Plus, Radio, Zap } from 'lucide-react';
 import type { SetlistItem } from '@/types/database';
 
 interface LiveSetlistProps {
@@ -74,9 +74,74 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [isMobile, setIsMobile] = useState(true); 
 
   // Ajustes visuales
-  const [fontSize, setFontSize] = useState(16); // Bajamos un poco el default para asegurar que quepa
+  const [fontSize, setFontSize] = useState(16);
   const [paperMode, setPaperMode] = useState(true); 
   const [transposeStep, setTransposeStep] = useState(0);
+
+  // --- SINCRONIZACIÓN EN TIEMPO REAL ---
+  const [role, setRole] = useState<'admin' | 'member' | null>(null);
+  const [syncEnabled, setSyncEnabled] = useState(true); // El usuario puede apagar la sync si quiere
+  const itemsRef = useRef<SetlistItem[]>([]); // Referencia para acceder a items dentro del callback de suscripción
+
+  // Mantener la referencia actualizada
+  useEffect(() => { itemsRef.current = items; }, [items]);
+
+  // 1. Cargar Perfil y Rol
+  useEffect(() => {
+    const checkRole = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+            if (profile) setRole(profile.role);
+        }
+    };
+    checkRole();
+  }, []);
+
+  // 2. Suscripción a Cambios (DB + Broadcast)
+  useEffect(() => {
+    // Canal único para este setlist
+    const channel = supabase.channel(`setlist_room_${setlistId}`, {
+        config: { broadcast: { self: false } } // No recibir mis propios mensajes
+    });
+
+    channel
+      // A. Escuchar cambios en la lista de canciones (DB)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'setlist_items', filter: `setlist_id=eq.${setlistId}` }, 
+        () => fetchData())
+      // B. Escuchar cambios de canción (Líder)
+      .on('broadcast', { event: 'song_change' }, ({ payload }) => {
+        // Solo cambiar si la sync está activada
+        if (syncEnabled) {
+            const newItem = itemsRef.current.find(i => i.id === payload.itemId);
+            if (newItem) {
+                setSelectedItem(newItem);
+                setTransposeStep(0); // Resetear transposición al cambiar
+            }
+        }
+      })
+      .subscribe((status) => { 
+          if (status === 'SUBSCRIBED') setIsConnected(true); 
+      });
+
+    return () => { supabase.removeChannel(channel); };
+  }, [setlistId, syncEnabled]); // Reiniciar si cambia el estado de sync
+
+  // 3. Función para cambiar canción
+  const handleSelectItem = async (item: SetlistItem) => {
+    setSelectedItem(item);
+    setTransposeStep(0);
+    if (isMobile) setSidebarOpen(false);
+
+    // SI SOY ADMIN: Enviar señal a todos
+    if (role === 'admin') {
+        await supabase.channel(`setlist_room_${setlistId}`).send({
+            type: 'broadcast',
+            event: 'song_change',
+            payload: { itemId: item.id }
+        });
+    }
+  };
 
   useEffect(() => { setTransposeStep(0); }, [selectedItem?.id]);
 
@@ -101,11 +166,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-    const channel = supabase.channel('live-setlist-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'setlist_items', filter: `setlist_id=eq.${setlistId}` }, () => fetchData()).subscribe((status) => { if (status === 'SUBSCRIBED') setIsConnected(true); });
-    return () => { supabase.removeChannel(channel); };
-  }, [setlistId]);
+  useEffect(() => { fetchData(); }, [setlistId]);
 
   const parseSongSections = (content: string) => {
     if (!content) return [];
@@ -132,8 +193,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     const pages: { title: string, body: string[] }[][] = [];
     let currentPage: { title: string, body: string[] }[] = [];
     let currentHeight = 0; 
-    
-    // Límite de líneas por hoja
     const PAGE_HEIGHT_LIMIT = isMobile ? 32 : 45; 
 
     sections.forEach(section => {
@@ -188,11 +247,18 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
         </div>
         <div className="p-4 border-b border-current/10 shrink-0">
              <h2 className="font-bold text-lg leading-tight truncate text-white">{setlistName}</h2>
-             <p className="text-xs mt-1 opacity-60 flex items-center gap-2">{items.length} canciones {isConnected && <span className="text-emerald-400 font-bold">• LIVE</span>}</p>
+             <div className="flex items-center gap-2 mt-1">
+                 <p className="text-xs opacity-60 flex items-center gap-1">{items.length} canciones</p>
+                 {isConnected && (
+                    <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold flex items-center gap-1 animate-pulse">
+                        <Radio size={8} /> LIVE
+                    </span>
+                 )}
+             </div>
         </div>
         <div className="flex-1 overflow-y-auto">
             {items.map((item, index) => (
-                <div key={item.id} onClick={() => { setSelectedItem(item); if (isMobile) setSidebarOpen(false); }} className={`p-4 border-b border-transparent cursor-pointer flex gap-3 items-center border-l-4 hover:bg-white/5 ${selectedItem?.id === item.id ? deskTheme.itemActive : 'border-l-transparent'}`}>
+                <div key={item.id} onClick={() => handleSelectItem(item)} className={`p-4 border-b border-transparent cursor-pointer flex gap-3 items-center border-l-4 hover:bg-white/5 ${selectedItem?.id === item.id ? deskTheme.itemActive : 'border-l-transparent'}`}>
                     <div className="font-mono font-bold w-6 text-center opacity-50">{index + 1}</div>
                     <div className="flex-1 min-w-0">
                         <div className={`font-bold truncate ${selectedItem?.id === item.id ? 'text-white' : ''}`}>{item.title_override || item.song?.title}</div>
@@ -210,22 +276,42 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
             {!sidebarOpen && (
                 <button onClick={() => setSidebarOpen(true)} className="p-2.5 rounded-full bg-blue-600 text-white shadow-lg animate-in fade-in hover:bg-blue-500"><Menu size={20} /></button>
             )}
-            {selectedItem?.type === 'song' && (
-                <div className="flex items-center gap-1 bg-black/60 backdrop-blur-md p-1 rounded-xl border border-white/10 shadow-lg">
-                    <div className="flex items-center bg-white/10 rounded-lg mx-1">
-                        <button onClick={() => setTransposeStep(s => s - 1)} className="p-2 hover:bg-white/20 text-white rounded-l-lg" title="Bajar Tono"><Minus size={14} /></button>
-                        <span className={`w-8 text-center text-xs font-bold ${transposeStep !== 0 ? 'text-yellow-400' : 'text-gray-400'}`}>{transposeStep > 0 ? `+${transposeStep}` : transposeStep}</span>
-                        <button onClick={() => setTransposeStep(s => s + 1)} className="p-2 hover:bg-white/20 text-white rounded-r-lg" title="Subir Tono"><Plus size={14} /></button>
+            
+            {/* PANEL DE CONTROL FLOTANTE */}
+            <div className="flex items-center gap-2">
+                {/* BOTÓN DE SINCRONIZACIÓN */}
+                {role && (
+                    <button 
+                        onClick={() => setSyncEnabled(!syncEnabled)} 
+                        className={`
+                            flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border backdrop-blur-md shadow-lg transition-all
+                            ${syncEnabled 
+                                ? 'bg-emerald-500 text-white border-emerald-400' 
+                                : 'bg-black/60 text-gray-400 border-white/10 hover:bg-white/10'}
+                        `}
+                    >
+                        {syncEnabled ? <Zap size={14} className="fill-current"/> : <Radio size={14} />}
+                        {syncEnabled ? (role === 'admin' ? 'TRANSMITIENDO' : 'SINCRONIZADO') : 'SYNC OFF'}
+                    </button>
+                )}
+
+                {selectedItem?.type === 'song' && (
+                    <div className="flex items-center gap-1 bg-black/60 backdrop-blur-md p-1 rounded-xl border border-white/10 shadow-lg">
+                        <div className="flex items-center bg-white/10 rounded-lg mx-1">
+                            <button onClick={() => setTransposeStep(s => s - 1)} className="p-2 hover:bg-white/20 text-white rounded-l-lg" title="Bajar Tono"><Minus size={14} /></button>
+                            <span className={`w-8 text-center text-xs font-bold ${transposeStep !== 0 ? 'text-yellow-400' : 'text-gray-400'}`}>{transposeStep > 0 ? `+${transposeStep}` : transposeStep}</span>
+                            <button onClick={() => setTransposeStep(s => s + 1)} className="p-2 hover:bg-white/20 text-white rounded-r-lg" title="Subir Tono"><Plus size={14} /></button>
+                        </div>
+                        <div className="w-px h-5 bg-white/20 mx-1"></div>
+                        <button onClick={() => setPaperMode(!paperMode)} className="p-2 rounded-lg hover:bg-white/20 text-white">{paperMode ? <FileText size={18} /> : <Moon size={18} />}</button>
+                        <div className="w-px h-5 bg-white/20 mx-1 hidden md:block"></div>
+                        <div className="hidden md:flex">
+                            <button onClick={() => setFontSize(s => Math.max(12, s - 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={14} className="scale-75"/></button>
+                            <button onClick={() => setFontSize(s => Math.min(48, s + 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={18}/></button>
+                        </div>
                     </div>
-                    <div className="w-px h-5 bg-white/20 mx-1"></div>
-                    <button onClick={() => setPaperMode(!paperMode)} className="p-2 rounded-lg hover:bg-white/20 text-white">{paperMode ? <FileText size={18} /> : <Moon size={18} />}</button>
-                    <div className="w-px h-5 bg-white/20 mx-1 hidden md:block"></div>
-                    <div className="hidden md:flex">
-                        <button onClick={() => setFontSize(s => Math.max(12, s - 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={14} className="scale-75"/></button>
-                        <button onClick={() => setFontSize(s => Math.min(48, s + 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={18}/></button>
-                    </div>
-                </div>
-            )}
+                )}
+            </div>
          </div>
 
          {selectedItem ? (
@@ -235,7 +321,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                      pages.map((pageSections, pageIndex) => (
                         <div 
                             key={pageIndex} 
-                            // AQUÍ ESTÁ EL FIX: Padding reducido en móvil (p-4) y ancho 100% (w-full)
                             className={`w-full transition-all duration-300 relative shrink-0 ${paperTheme.bg} ${paperTheme.text} ${paperTheme.shadow} p-4 md:p-[20mm] rounded-sm flex flex-col ${isMobile ? 'min-h-[85vh] mb-4' : 'max-w-[210mm] h-[297mm]'}`} 
                             style={{ fontSize: `${fontSize}px` }}
                         >
@@ -253,7 +338,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                             ) : <div className="h-4 w-full shrink-0"></div>}
 
                             <div className="flex-1 min-h-0 w-full">
-                                {/* FIX: overflow-x-auto permite scroll si la línea es EXTREMADAMENTE larga, evitando romper el layout */}
                                 <div className="w-full font-mono whitespace-pre-wrap break-words leading-relaxed overflow-x-auto max-w-full">
                                     {pageSections.map((section, idx) => (
                                         <div key={idx} className="break-inside-avoid mb-6 block w-full">
