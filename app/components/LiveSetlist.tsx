@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { ArrowLeft, Wifi, Type, Moon, Columns, FileText, AlignJustify, AlignLeft, Music, Menu, X, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, Wifi, Type, Moon, Columns, FileText, Music, Menu, X, Minus, Plus } from 'lucide-react';
 import type { SetlistItem } from '@/types/database';
 
 interface LiveSetlistProps {
@@ -10,52 +10,66 @@ interface LiveSetlistProps {
   onBack: () => void;
 }
 
-// --- MOTOR DE TRANSPOSICIÓN ---
+// --- MOTOR DE TRANSPOSICIÓN MEJORADO ---
 const NOTES_FLAT = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 const NOTES_SHARP = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 const transposeChord = (chord: string, amount: number) => {
   if (amount === 0) return chord;
   
-  // Expresión regular para separar la nota base (ej: C#) del resto (ej: m7)
   const regex = /^([A-G][#b]?)(.*)$/;
   const match = chord.match(regex);
-  
-  if (!match) return chord; // Si no parece acorde, devolver igual
+  if (!match) return chord;
   
   const note = match[1];
-  const suffix = match[2]; // m, 7, sus4, etc.
+  const suffix = match[2];
   
-  // Decidir si usamos sostenidos o bemoles basado en el acorde actual
-  const list = note.includes("b") || note === "F" ? NOTES_FLAT : NOTES_SHARP;
-  const index = list.indexOf(note);
+  // Preferir bemoles (b) si la nota original ya tiene bemol o es F (para evitar E#)
+  const useFlats = note.includes("b") || note === "F" || amount < 0; 
+  const list = useFlats ? NOTES_FLAT : NOTES_SHARP;
   
-  if (index === -1) {
-    // Intentar buscar en la otra lista si no se encontró
-    const altList = list === NOTES_FLAT ? NOTES_SHARP : NOTES_FLAT;
-    const altIndex = altList.indexOf(note);
-    if (altIndex !== -1) {
-        let newIndex = (altIndex + amount) % 12;
-        if (newIndex < 0) newIndex += 12;
-        return altList[newIndex] + suffix;
-    }
-    return chord;
-  }
+  // Buscar índice en ambas listas por seguridad
+  let index = list.indexOf(note);
+  if (index === -1) index = (useFlats ? NOTES_SHARP : NOTES_FLAT).indexOf(note);
+  if (index === -1) return chord; // Si no encuentra la nota, devolver original
 
   let newIndex = (index + amount) % 12;
-  if (newIndex < 0) newIndex += 12; // Manejar números negativos
+  if (newIndex < 0) newIndex += 12;
   
   return list[newIndex] + suffix;
 };
 
-// Función para procesar una línea entera y transponer solo lo que parezca acorde
+// --- DETECTOR INTELIGENTE DE ACORDES ---
+// Una línea es "Acordes" solo si la mayoría de sus palabras parecen acordes
+const isChordLineStrict = (line: string) => {
+    const words = line.trim().split(/\s+/);
+    if (words.length === 0) return false;
+
+    // Regex estricto: Nota (A-G) opcional(#/b) + sufijos comunes, y que sea el fin de la palabra
+    // Evita confundir "En" (E + n) o "La" (L no es nota, pero A sí).
+    const chordRegex = /^[A-G][#b]?(m|maj|dim|aug|sus|add|2|4|5|6|7|9|11|13)*(\/[A-G][#b]?)?$/;
+    
+    // Palabras prohibidas que parecen acordes pero son lírica común
+    const bannedWords = ["A", "En", "La", "Y", "O", "Tu", "Te", "Se", "Me", "Si", "No", "Es", "Un", "El", "Al"];
+    
+    let chordCount = 0;
+    words.forEach(w => {
+        // Limpiamos signos de puntuación para verificar
+        const cleanWord = w.replace(/[.,:;()]/g, '');
+        if (chordRegex.test(cleanWord) && !bannedWords.includes(cleanWord)) {
+            chordCount++;
+        }
+    });
+
+    // Si más del 50% de las palabras son acordes, es una línea de acordes
+    return chordCount > 0 && (chordCount / words.length) >= 0.5;
+};
+
 const transposeLine = (line: string, amount: number) => {
   if (amount === 0) return line;
-  
-  // Regex inteligente: Busca palabras que parezcan acordes (A-G opcional #/b, opcional m/sus/dim/add, opcional /Bajo)
-  // Ejemplos: C, C#m, G/B, Dsus4
-  return line.replace(/\b[A-G][#b]?(?:m|maj|dim|aug|sus|add)?[0-9]*(?:\/[A-G][#b]?)?\b/g, (match) => {
-    // Si contiene una barra (ej: G/B), transponer ambas partes
+  // Solo transponer lo que parezca acorde estrictamente
+  return line.replace(/\b[A-G][#b]?(?:m|maj|dim|aug|sus|add|2|5|7|9)*\d*(?:\/[A-G][#b]?)?\b/g, (match) => {
+    if (["En", "La", "Tu", "Te", "A"].includes(match)) return match; // Protección extra
     if (match.includes('/')) {
         const parts = match.split('/');
         return transposeChord(parts[0], amount) + '/' + transposeChord(parts[1], amount);
@@ -63,7 +77,6 @@ const transposeLine = (line: string, amount: number) => {
     return transposeChord(match, amount);
   });
 };
-
 
 export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [items, setItems] = useState<SetlistItem[]>([]);
@@ -80,14 +93,9 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [paperMode, setPaperMode] = useState(true); 
   const [twoColumns, setTwoColumns] = useState(true);
   const [columnFillBalance, setColumnFillBalance] = useState(false);
-  
-  // NUEVO: Estado para la transposición (+1, -2, etc)
   const [transposeStep, setTransposeStep] = useState(0);
 
-  // Resetear transposición al cambiar de canción
-  useEffect(() => {
-    setTransposeStep(0);
-  }, [selectedItem?.id]);
+  useEffect(() => { setTransposeStep(0); }, [selectedItem?.id]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -125,7 +133,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     return () => { supabase.removeChannel(channel); };
   }, [setlistId]);
 
-  // --- PARSEADOR ---
   const parseSongSections = (content: string) => {
     if (!content) return [];
     const lines = content.split('\n');
@@ -147,7 +154,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     return sections;
   };
 
-  // --- PAGINADOR ---
   const paginateSections = (sections: { title: string, body: string[] }[]) => {
     const pages: { title: string, body: string[] }[][] = [];
     let currentPage: { title: string, body: string[] }[] = [];
@@ -175,7 +181,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   
   const pages = paginateSections(allSections);
 
-  // TEMAS
   const deskTheme = {
     bg: paperMode ? 'bg-zinc-800' : 'bg-black',
     sidebar: paperMode ? 'bg-zinc-900 border-zinc-700 text-gray-400' : 'bg-zinc-950 border-zinc-800 text-gray-500',
@@ -190,7 +195,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     sectionTitleBg: paperMode ? 'bg-white border-gray-400' : 'bg-slate-800 border-slate-600',
     sectionTitleText: paperMode ? 'text-black' : 'text-yellow-400',
     metaText: paperMode ? 'text-gray-600' : 'text-gray-500',
-    chordColor: paperMode ? 'text-blue-600' : 'text-blue-400' // Color para acordes
+    chordColor: paperMode ? 'text-blue-600' : 'text-blue-400'
   };
 
   return (
@@ -255,7 +260,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
 
             {selectedItem?.type === 'song' && (
                 <div className="flex items-center gap-1 bg-black/60 backdrop-blur-md p-1 rounded-xl border border-white/10 shadow-lg">
-                    {/* CONTROLES DE TRANSPOSICIÓN */}
                     <div className="flex items-center bg-white/10 rounded-lg mx-1">
                         <button onClick={() => setTransposeStep(s => s - 1)} className="p-2 hover:bg-white/20 text-white rounded-l-lg" title="Bajar Tono"><Minus size={14} /></button>
                         <span className={`w-8 text-center text-xs font-bold ${transposeStep !== 0 ? 'text-yellow-400' : 'text-gray-400'}`}>
@@ -300,7 +304,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                             `}
                             style={{ fontSize: `${isMobile ? fontSize + 2 : fontSize}px` }}
                         >
-                            {/* CABECERA */}
                             {pageIndex === 0 ? (
                                 <div className={`mb-4 border-b-2 pb-2 flex justify-between items-end shrink-0 ${paperTheme.headerBorder}`}>
                                     <div className="max-w-[70%]">
@@ -312,7 +315,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                         </p>
                                     </div>
                                     <div className="text-right flex flex-col items-end shrink-0">
-                                        {/* TONO CALCULADO */}
                                         <div className={`text-2xl md:text-3xl font-bold flex items-center gap-1 ${transposeStep !== 0 ? 'text-yellow-500' : ''}`}>
                                             {transposeChord(selectedItem.key_override || selectedItem.song?.default_key || 'C', transposeStep)}
                                         </div>
@@ -345,14 +347,13 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                             )}
                                             <div className="opacity-90 pl-1">
                                                 {section.body.map((line, lIdx) => {
-                                                    // TRANSPOSICIÓN EN TIEMPO REAL
-                                                    // Detectamos si la línea es "línea de acordes" (muchas mayúsculas, poco texto)
-                                                    const isChordLine = /[A-G]/.test(line) && line.length < 50; 
-                                                    const content = isChordLine ? transposeLine(line, transposeStep) : line;
+                                                    // Detectar si es línea de acordes con lógica estricta
+                                                    const isChord = isChordLineStrict(line);
+                                                    const content = isChord ? transposeLine(line, transposeStep) : line;
                                                     
                                                     return (
                                                         <div key={lIdx} className="min-h-[1.2em]">
-                                                            {paperMode && isChordLine 
+                                                            {paperMode && isChord 
                                                             ? <span className={`font-bold ${paperTheme.chordColor}`}>{content}</span> 
                                                             : content}
                                                         </div>
