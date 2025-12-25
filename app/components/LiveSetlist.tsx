@@ -40,15 +40,20 @@ const isChordLineStrict = (line: string) => {
     const words = line.trim().split(/\s+/);
     if (words.length === 0) return false;
     
-    // Si la línea empieza con // es un comentario, no es acorde
     if (line.trim().startsWith("//")) return false;
 
+    // Regex estricto para acordes
     const chordRegex = /^[A-G][#b]?(m|maj|dim|aug|sus|add|2|4|5|6|7|9|11|13)*(\/[A-G][#b]?)?$/;
-    const bannedWords = ["A", "En", "La", "Y", "O", "Tu", "Te", "Se", "Me", "Si", "No", "Es", "Un", "El", "Al", "Del", "Lo", "Le"];
+    // Lista ampliada de palabras comunes para evitar falsos positivos
+    const bannedWords = [
+        "A", "En", "La", "Y", "O", "Tu", "Te", "Se", "Me", "Si", "No", "Es", "Un", "El", "Al", "Del", "Lo", "Le", 
+        "Con", "Por", "Sus", "Mis", "Las", "Los", "De", "Da", "Do", "Re", "Mi", "Fa", "Sol"
+    ];
     
     let chordCount = 0;
     words.forEach(w => {
         const cleanWord = w.replace(/[.,:;()]/g, '');
+        // Solo cuenta como acorde si pasa el regex Y no es una palabra prohibida
         if (chordRegex.test(cleanWord) && !bannedWords.includes(cleanWord)) {
             chordCount++;
         }
@@ -60,7 +65,7 @@ const isChordLineStrict = (line: string) => {
 const transposeLine = (line: string, amount: number) => {
   if (amount === 0) return line;
   return line.replace(/\b[A-G][#b]?(?:m|maj|dim|aug|sus|add|2|5|7|9)*\d*(?:\/[A-G][#b]?)?\b/g, (match) => {
-    if (["En", "La", "Tu", "Te", "A"].includes(match)) return match;
+    if (["En", "La", "Tu", "Te", "A", "Con", "Por", "De"].includes(match)) return match;
     if (match.includes('/')) {
         const parts = match.split('/');
         return transposeChord(parts[0], amount) + '/' + transposeChord(parts[1], amount);
@@ -113,7 +118,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     return () => { supabase.removeChannel(channel); };
   }, [setlistId]);
 
-  // --- PARSEADOR ---
   const parseSongSections = (content: string) => {
     if (!content) return [];
     const lines = content.split('\n');
@@ -128,8 +132,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
         if (currentSection.title || currentSection.body.length > 0) sections.push(currentSection);
         currentSection = { title: line.replace(/[\[\]:]/g, ''), body: [] };
       } else {
-        // CORRECCIÓN: YA NO FILTRAMOS LÍNEAS VACÍAS
-        // Permitimos líneas vacías para respetar el espaciado del usuario
         currentSection.body.push(line);
       }
     });
@@ -144,7 +146,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     const PAGE_HEIGHT_LIMIT = isMobile ? 35 : (twoColumns ? 52 : 45); 
 
     sections.forEach(section => {
-      // Contamos las líneas reales (incluyendo vacías)
       const sectionHeight = 3 + section.body.length;
       if (currentHeight + sectionHeight > PAGE_HEIGHT_LIMIT && currentPage.length > 0) {
         pages.push(currentPage);
@@ -257,14 +258,17 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
 
                             <div className="flex-1 min-h-0">
                                 <div 
+                                    // CORRECCIÓN CLAVE: whitespace-pre-wrap permite que el texto baje si es muy largo
+                                    // break-words asegura que no se desborde horizontalmente
                                     className={`
-                                        w-full font-mono whitespace-pre leading-relaxed overflow-x-auto
+                                        w-full font-mono whitespace-pre-wrap break-words leading-relaxed overflow-x-hidden
                                         ${twoColumns && !isMobile ? 'columns-2 gap-[10mm]' : 'columns-1'}
                                     `}
                                     style={{ columnFill: columnFillBalance ? 'balance' : 'auto' }} 
                                 >
                                     {pageSections.map((section, idx) => (
-                                        <div key={idx} className="break-inside-avoid mb-6 inline-block w-full">
+                                        // CORRECCIÓN CLAVE: 'block' en vez de 'inline-block' para evitar conflictos de ancho
+                                        <div key={idx} className="break-inside-avoid mb-6 block w-full">
                                             {section.title && (
                                                 <div className="mb-2">
                                                     <span className={`inline-block px-3 py-1 rounded-full text-[0.8em] font-black uppercase tracking-widest border shadow-sm ${paperTheme.sectionTitleBg} ${paperTheme.sectionTitleText}`}>{section.title}</span>
@@ -275,7 +279,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                                     const isChord = isChordLineStrict(line);
                                                     const content = isChord ? transposeLine(line, transposeStep) : line;
                                                     
-                                                    // Usamos min-h para que las líneas vacías ocupen espacio
                                                     return (
                                                         <div key={lIdx} className="min-h-[1.2em]">
                                                             {paperMode && isChord ? <span className={`font-bold ${paperTheme.chordColor}`}>{content}</span> : (content || ' ')}
