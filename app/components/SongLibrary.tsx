@@ -17,20 +17,34 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
   const [editingSong, setEditingSong] = useState<Song | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Cargar canciones al inicio
   useEffect(() => {
     fetchSongs();
   }, []);
 
   const fetchSongs = async () => {
     setLoading(true);
-    let query = supabase.from('songs').select('*').order('title', { ascending: true });
     
-    if (searchTerm) {
-      query = query.ilike('title', `%${searchTerm}%`);
-    }
+    // Filtramos por la organización del usuario
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+        const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single();
+        
+        if (profile?.organization_id) {
+            let query = supabase
+                .from('songs')
+                .select('*')
+                .eq('organization_id', profile.organization_id) // <--- FILTRO IMPORTANTE
+                .order('title', { ascending: true });
+            
+            if (searchTerm) {
+                query = query.ilike('title', `%${searchTerm}%`);
+            }
 
-    const { data } = await query;
-    if (data) setSongs(data);
+            const { data } = await query;
+            if (data) setSongs(data);
+        }
+    }
     setLoading(false);
   };
 
@@ -45,11 +59,29 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
     setIsSaving(true);
 
     try {
+      // 1. Obtener Org ID para asegurar dónde guardamos
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No autenticado");
+      
+      const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single();
+      if (!profile?.organization_id) throw new Error("No tienes organización.");
+
+      // 2. Guardar (Insertar o Actualizar)
       if (editingSong.id === 'new') {
+        // CREAR NUEVA
         const { id, ...songData } = editingSong;
-        const { error } = await supabase.from('songs').insert([songData]);
+        const { error } = await supabase.from('songs').insert([{
+            title: songData.title,
+            artist: songData.artist,
+            bpm: songData.bpm,
+            default_key: songData.default_key,
+            content: songData.content,
+            organization_id: profile.organization_id, // <--- ESTO FALTABA
+            duration_seconds: 300
+        }]);
         if (error) throw error;
       } else {
+        // ACTUALIZAR EXISTENTE
         const { error } = await supabase
           .from('songs')
           .update({
@@ -67,9 +99,9 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
       setEditingSong(null);
       fetchSongs();
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("Error al guardar la canción.");
+      alert("Error: " + error.message);
     } finally {
       setIsSaving(false);
     }
@@ -99,8 +131,7 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
     });
   };
 
-  // ESTILOS CORREGIDOS: Texto oscuro y fondo blanco explícito
-  const inputBaseClass = "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 bg-white placeholder:text-gray-400";
+  const inputBaseClass = "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 bg-white placeholder:text-gray-400 font-medium";
 
   // --- VISTA EDITOR ---
   if (editingSong) {
@@ -226,7 +257,7 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
           </button>
        </div>
 
-       {/* Buscador corregido */}
+       {/* Buscador */}
        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
           <input 
@@ -242,7 +273,7 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
           {loading ? (
              <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-gray-400"/></div>
           ) : songs.length === 0 ? (
-             <div className="p-10 text-center text-gray-400">No se encontraron canciones.</div>
+             <div className="p-10 text-center text-gray-400">No se encontraron canciones en tu organización.</div>
           ) : (
              <div className="divide-y divide-gray-100">
                 {songs.map(song => (
