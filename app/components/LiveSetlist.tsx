@@ -2,13 +2,68 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { ArrowLeft, Wifi, Maximize2, Minimize2, Type, Moon, Columns, FileText, AlignJustify, AlignLeft, Music, Menu, X } from 'lucide-react';
+import { ArrowLeft, Wifi, Type, Moon, Columns, FileText, AlignJustify, AlignLeft, Music, Menu, X, Minus, Plus } from 'lucide-react';
 import type { SetlistItem } from '@/types/database';
 
 interface LiveSetlistProps {
   setlistId: string;
   onBack: () => void;
 }
+
+// --- MOTOR DE TRANSPOSICIÓN ---
+const NOTES_FLAT = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+const NOTES_SHARP = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+const transposeChord = (chord: string, amount: number) => {
+  if (amount === 0) return chord;
+  
+  // Expresión regular para separar la nota base (ej: C#) del resto (ej: m7)
+  const regex = /^([A-G][#b]?)(.*)$/;
+  const match = chord.match(regex);
+  
+  if (!match) return chord; // Si no parece acorde, devolver igual
+  
+  const note = match[1];
+  const suffix = match[2]; // m, 7, sus4, etc.
+  
+  // Decidir si usamos sostenidos o bemoles basado en el acorde actual
+  const list = note.includes("b") || note === "F" ? NOTES_FLAT : NOTES_SHARP;
+  const index = list.indexOf(note);
+  
+  if (index === -1) {
+    // Intentar buscar en la otra lista si no se encontró
+    const altList = list === NOTES_FLAT ? NOTES_SHARP : NOTES_FLAT;
+    const altIndex = altList.indexOf(note);
+    if (altIndex !== -1) {
+        let newIndex = (altIndex + amount) % 12;
+        if (newIndex < 0) newIndex += 12;
+        return altList[newIndex] + suffix;
+    }
+    return chord;
+  }
+
+  let newIndex = (index + amount) % 12;
+  if (newIndex < 0) newIndex += 12; // Manejar números negativos
+  
+  return list[newIndex] + suffix;
+};
+
+// Función para procesar una línea entera y transponer solo lo que parezca acorde
+const transposeLine = (line: string, amount: number) => {
+  if (amount === 0) return line;
+  
+  // Regex inteligente: Busca palabras que parezcan acordes (A-G opcional #/b, opcional m/sus/dim/add, opcional /Bajo)
+  // Ejemplos: C, C#m, G/B, Dsus4
+  return line.replace(/\b[A-G][#b]?(?:m|maj|dim|aug|sus|add)?[0-9]*(?:\/[A-G][#b]?)?\b/g, (match) => {
+    // Si contiene una barra (ej: G/B), transponer ambas partes
+    if (match.includes('/')) {
+        const parts = match.split('/');
+        return transposeChord(parts[0], amount) + '/' + transposeChord(parts[1], amount);
+    }
+    return transposeChord(match, amount);
+  });
+};
+
 
 export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [items, setItems] = useState<SetlistItem[]>([]);
@@ -17,7 +72,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [isConnected, setIsConnected] = useState(false);
   
   // ESTADOS DE INTERFAZ
-  // IMPORTANTE: Empezamos cerrado para evitar que tape la pantalla en móvil
   const [sidebarOpen, setSidebarOpen] = useState(false); 
   const [isMobile, setIsMobile] = useState(true); 
 
@@ -26,17 +80,22 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [paperMode, setPaperMode] = useState(true); 
   const [twoColumns, setTwoColumns] = useState(true);
   const [columnFillBalance, setColumnFillBalance] = useState(false);
+  
+  // NUEVO: Estado para la transposición (+1, -2, etc)
+  const [transposeStep, setTransposeStep] = useState(0);
 
-  // DETECTAR TAMAÑO DE PANTALLA
+  // Resetear transposición al cambiar de canción
+  useEffect(() => {
+    setTransposeStep(0);
+  }, [selectedItem?.id]);
+
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth < 1024; // Detectamos si es pantalla chica
+      const mobile = window.innerWidth < 1024; 
       setIsMobile(mobile);
-      // Si es PC (pantalla grande), abrimos el menú automáticamente
       if (!mobile) setSidebarOpen(true);
     };
-    
-    handleResize(); // Ejecutar al inicio
+    handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -66,7 +125,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     return () => { supabase.removeChannel(channel); };
   }, [setlistId]);
 
-  // --- PARSEADOR (Divide la canción en bloques) ---
+  // --- PARSEADOR ---
   const parseSongSections = (content: string) => {
     if (!content) return [];
     const lines = content.split('\n');
@@ -88,13 +147,11 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     return sections;
   };
 
-  // --- PAGINADOR (Calcula cuándo cortar la hoja) ---
+  // --- PAGINADOR ---
   const paginateSections = (sections: { title: string, body: string[] }[]) => {
     const pages: { title: string, body: string[] }[][] = [];
     let currentPage: { title: string, body: string[] }[] = [];
     let currentHeight = 0; 
-    
-    // En celular caben menos líneas, ajustamos el límite
     const PAGE_HEIGHT_LIMIT = isMobile ? 35 : (twoColumns ? 52 : 45); 
 
     sections.forEach(section => {
@@ -118,7 +175,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   
   const pages = paginateSections(allSections);
 
-  // TEMAS DE COLORES
+  // TEMAS
   const deskTheme = {
     bg: paperMode ? 'bg-zinc-800' : 'bg-black',
     sidebar: paperMode ? 'bg-zinc-900 border-zinc-700 text-gray-400' : 'bg-zinc-950 border-zinc-800 text-gray-500',
@@ -132,26 +189,22 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     headerBorder: paperMode ? 'border-gray-900' : 'border-slate-700',
     sectionTitleBg: paperMode ? 'bg-white border-gray-400' : 'bg-slate-800 border-slate-600',
     sectionTitleText: paperMode ? 'text-black' : 'text-yellow-400',
-    metaText: paperMode ? 'text-gray-600' : 'text-gray-500'
+    metaText: paperMode ? 'text-gray-600' : 'text-gray-500',
+    chordColor: paperMode ? 'text-blue-600' : 'text-blue-400' // Color para acordes
   };
 
   return (
     <div className={`fixed inset-0 z-50 flex h-screen w-full overflow-hidden ${deskTheme.bg} transition-colors duration-300`}>
       
-      {/* --- FONDO OSCURO PARA EL MENÚ EN MÓVIL --- */}
       {isMobile && sidebarOpen && (
-        <div 
-            className="fixed inset-0 bg-black/80 z-[60] backdrop-blur-sm"
-            onClick={() => setSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/80 z-[60] backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* --- BARRA LATERAL (MENÚ) --- */}
+      {/* BARRA LATERAL */}
       <div 
         className={`
             fixed top-0 left-0 h-full z-[70] flex flex-col border-r transition-transform duration-300 shadow-2xl
             ${deskTheme.sidebar}
-            ${/* EN MÓVIL OCUPA 85%, EN PC ES FIJO DE 320PX */ ''}
             ${isMobile ? 'w-[85%]' : 'w-80 relative'}
             ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:w-0 lg:overflow-hidden'}
         `}
@@ -160,12 +213,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
             <button onClick={onBack} className="flex items-center gap-2 text-sm hover:text-white transition-colors">
                 <ArrowLeft size={16} /> Salir
             </button>
-            {/* Botón cerrar X solo en móvil */}
-            {isMobile && (
-                <button onClick={() => setSidebarOpen(false)} className="p-2 bg-white/10 rounded-full text-white">
-                    <X size={20} />
-                </button>
-            )}
+            {isMobile && <button onClick={() => setSidebarOpen(false)} className="p-2 bg-white/10 rounded-full text-white"><X size={20} /></button>}
         </div>
         
         <div className="p-4 border-b border-current/10 shrink-0">
@@ -180,10 +228,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
             {items.map((item, index) => (
                 <div 
                     key={item.id} 
-                    onClick={() => {
-                        setSelectedItem(item);
-                        if (isMobile) setSidebarOpen(false); // Al elegir canción, cerrar menú en móvil
-                    }} 
+                    onClick={() => { setSelectedItem(item); if (isMobile) setSidebarOpen(false); }} 
                     className={`p-4 border-b border-transparent cursor-pointer flex gap-3 items-center border-l-4 hover:bg-white/5 ${selectedItem?.id === item.id ? deskTheme.itemActive : 'border-l-transparent'}`}
                 >
                     <div className="font-mono font-bold w-6 text-center opacity-50">{index + 1}</div>
@@ -196,37 +241,45 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
         </div>
       </div>
 
-      {/* --- ÁREA PRINCIPAL (HOJA DE CANCIÓN) --- */}
+      {/* ÁREA PRINCIPAL */}
       <div className="flex-1 flex flex-col relative h-full overflow-hidden w-full bg-transparent">
          
-         {/* BARRA DE HERRAMIENTAS FLOTANTE */}
-         <div className="absolute top-4 right-4 z-50 flex items-center gap-2 print:hidden">
+         {/* HERRAMIENTAS FLOTANTES */}
+         <div className="absolute top-4 right-4 z-50 flex items-center gap-2 print:hidden flex-wrap justify-end">
             
-            {/* Botón Menú Hamburguesa (Aparece si el menú está cerrado) */}
             {!sidebarOpen && (
-                <button 
-                    onClick={() => setSidebarOpen(true)} 
-                    className="p-2.5 rounded-full bg-blue-600 text-white shadow-lg animate-in fade-in hover:bg-blue-500"
-                >
+                <button onClick={() => setSidebarOpen(true)} className="p-2.5 rounded-full bg-blue-600 text-white shadow-lg animate-in fade-in hover:bg-blue-500">
                     <Menu size={20} />
                 </button>
             )}
 
             {selectedItem?.type === 'song' && (
                 <div className="flex items-center gap-1 bg-black/60 backdrop-blur-md p-1 rounded-xl border border-white/10 shadow-lg">
+                    {/* CONTROLES DE TRANSPOSICIÓN */}
+                    <div className="flex items-center bg-white/10 rounded-lg mx-1">
+                        <button onClick={() => setTransposeStep(s => s - 1)} className="p-2 hover:bg-white/20 text-white rounded-l-lg" title="Bajar Tono"><Minus size={14} /></button>
+                        <span className={`w-8 text-center text-xs font-bold ${transposeStep !== 0 ? 'text-yellow-400' : 'text-gray-400'}`}>
+                            {transposeStep > 0 ? `+${transposeStep}` : transposeStep}
+                        </span>
+                        <button onClick={() => setTransposeStep(s => s + 1)} className="p-2 hover:bg-white/20 text-white rounded-r-lg" title="Subir Tono"><Plus size={14} /></button>
+                    </div>
+
+                    <div className="w-px h-5 bg-white/20 mx-1"></div>
+
                     <button onClick={() => setPaperMode(!paperMode)} className="p-2 rounded-lg hover:bg-white/20 text-white">
                         {paperMode ? <FileText size={18} /> : <Moon size={18} />}
                     </button>
                     
-                    {/* Botón columnas (oculto en móvil para no romper la hoja) */}
                     <button onClick={() => setTwoColumns(!twoColumns)} className="hidden lg:flex p-2 rounded-lg hover:bg-white/20 text-white">
                         <Columns size={18} />
                     </button>
 
-                    <div className="w-px h-5 bg-white/20 mx-1"></div>
+                    <div className="w-px h-5 bg-white/20 mx-1 hidden md:block"></div>
                     
-                    <button onClick={() => setFontSize(s => Math.max(12, s - 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={14} className="scale-75"/></button>
-                    <button onClick={() => setFontSize(s => Math.min(36, s + 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={18}/></button>
+                    <div className="hidden md:flex">
+                        <button onClick={() => setFontSize(s => Math.max(12, s - 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={14} className="scale-75"/></button>
+                        <button onClick={() => setFontSize(s => Math.min(36, s + 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={18}/></button>
+                    </div>
                 </div>
             )}
          </div>
@@ -234,7 +287,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
          {selectedItem ? (
             <div className={`flex-1 overflow-y-auto ${selectedItem.type === 'song' ? 'p-2 md:p-8' : 'p-0'} flex flex-col items-center gap-4 md:gap-6`}>
                 
-                {/* --- RENDERIZADO DE PÁGINAS --- */}
                 {selectedItem.type === 'song' ? (
                    pages.length > 0 ? (
                      pages.map((pageSections, pageIndex) => (
@@ -248,7 +300,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                             `}
                             style={{ fontSize: `${isMobile ? fontSize + 2 : fontSize}px` }}
                         >
-                            {/* CABECERA (Solo pág 1) */}
+                            {/* CABECERA */}
                             {pageIndex === 0 ? (
                                 <div className={`mb-4 border-b-2 pb-2 flex justify-between items-end shrink-0 ${paperTheme.headerBorder}`}>
                                     <div className="max-w-[70%]">
@@ -260,7 +312,10 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                         </p>
                                     </div>
                                     <div className="text-right flex flex-col items-end shrink-0">
-                                        <div className="text-2xl md:text-3xl font-bold">{selectedItem.key_override || selectedItem.song?.default_key}</div>
+                                        {/* TONO CALCULADO */}
+                                        <div className={`text-2xl md:text-3xl font-bold flex items-center gap-1 ${transposeStep !== 0 ? 'text-yellow-500' : ''}`}>
+                                            {transposeChord(selectedItem.key_override || selectedItem.song?.default_key || 'C', transposeStep)}
+                                        </div>
                                         <div className={`text-[10px] md:text-xs uppercase tracking-widest font-bold ${paperTheme.metaText}`}>
                                             {selectedItem.song?.bpm} BPM
                                         </div>
@@ -281,7 +336,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                             {section.title && (
                                                 <div className="mb-2">
                                                     <span className={`
-                                                        inline-block px-3 py-0.5 rounded-full text-[0.8em] font-black uppercase tracking-widest border shadow-sm
+                                                        inline-block px-3 py-1 rounded-full text-[0.8em] font-black uppercase tracking-widest border shadow-sm
                                                         ${paperTheme.sectionTitleBg} ${paperTheme.sectionTitleText}
                                                     `}>
                                                         {section.title}
@@ -289,19 +344,26 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                                 </div>
                                             )}
                                             <div className="opacity-90 pl-1">
-                                                {section.body.map((line, lIdx) => (
-                                                    <div key={lIdx} className="min-h-[1.2em]">
-                                                    {paperMode && line.trim().length < 20 && /[A-G]/.test(line) 
-                                                        ? <span className="font-bold text-blue-600">{line}</span> 
-                                                        : line}
-                                                    </div>
-                                                ))}
+                                                {section.body.map((line, lIdx) => {
+                                                    // TRANSPOSICIÓN EN TIEMPO REAL
+                                                    // Detectamos si la línea es "línea de acordes" (muchas mayúsculas, poco texto)
+                                                    const isChordLine = /[A-G]/.test(line) && line.length < 50; 
+                                                    const content = isChordLine ? transposeLine(line, transposeStep) : line;
+                                                    
+                                                    return (
+                                                        <div key={lIdx} className="min-h-[1.2em]">
+                                                            {paperMode && isChordLine 
+                                                            ? <span className={`font-bold ${paperTheme.chordColor}`}>{content}</span> 
+                                                            : content}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                             </div>
-
+                            
                             <div className="mt-auto pt-2 border-t border-current/10 flex justify-between text-[9px] opacity-40 uppercase tracking-widest font-bold shrink-0">
                                 <span>SetlistPro</span>
                                 <span>{pageIndex + 1} / {pages.length}</span>
@@ -312,12 +374,9 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                      <div className="text-white opacity-50 mt-20">Sin contenido.</div>
                    )
                 ) : (
-                   // --- MODO BLOQUE (SIMPLE) ---
                    <div className="flex-1 w-full h-full flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm min-h-[50vh]">
                       <div className="text-center w-full">
-                          <h1 className="text-4xl md:text-8xl font-serif italic text-white/90 drop-shadow-2xl break-words">
-                              {selectedItem.title_override}
-                          </h1>
+                          <h1 className="text-4xl md:text-8xl font-serif italic text-white/90 drop-shadow-2xl break-words">{selectedItem.title_override}</h1>
                           <div className="w-20 md:w-32 h-1 bg-white/30 mx-auto mt-6 md:mt-8 rounded-full"></div>
                       </div>
                    </div>
@@ -326,11 +385,9 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
          ) : (
             <div className="h-full flex flex-col items-center justify-center text-gray-500 p-4 text-center">
                 <Music size={48} className="mb-4 opacity-20 text-white" />
-                <p className="text-gray-400">Selecciona una canción del menú</p>
+                <p className="text-gray-400">Selecciona una canción</p>
                 {!sidebarOpen && (
-                    <button onClick={() => setSidebarOpen(true)} className="mt-4 text-blue-400 font-bold text-sm bg-white/10 px-4 py-2 rounded-full">
-                        Abrir Menú
-                    </button>
+                    <button onClick={() => setSidebarOpen(true)} className="mt-4 text-blue-400 font-bold text-sm bg-white/10 px-4 py-2 rounded-full">Abrir Menú</button>
                 )}
             </div>
          )}
