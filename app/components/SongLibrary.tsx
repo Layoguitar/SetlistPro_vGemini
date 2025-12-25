@@ -1,15 +1,26 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Music, Edit3, Trash2, Save, ArrowLeft, Loader2 } from 'lucide-react';
+import { Search, Plus, Music, Edit3, Save, ArrowLeft, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import type { Song } from '@/types/database';
 
-interface SongLibraryProps {
-  onBack: () => void;
+// Definimos el tipo aquí para evitar errores si falta el archivo de tipos
+interface Song {
+  id: string;
+  title: string;
+  artist: string;
+  bpm: number;
+  default_key: string;
+  content: string;
+  organization_id?: string;
+  duration_seconds?: number;
 }
 
-export default function SongLibrary({ onBack }: SongLibraryProps) {
+interface SongLibraryProps {
+  orgId?: string; // Lo recibimos opcionalmente desde el Dashboard
+}
+
+export default function SongLibrary({ orgId }: SongLibraryProps) {
   const [songs, setSongs] = useState<Song[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
@@ -20,21 +31,34 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
   // Cargar canciones al inicio
   useEffect(() => {
     fetchSongs();
-  }, []);
+  }, [orgId]); // Recargar si cambia la org
 
   const fetchSongs = async () => {
     setLoading(true);
     
-    // Filtramos por la organización del usuario
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-        const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single();
+    try {
+        // 1. Si no nos pasaron el orgId por props, lo buscamos manual
+        let currentOrgId = orgId;
         
-        if (profile?.organization_id) {
+        if (!currentOrgId) {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                // CORRECCIÓN: Buscamos en organization_members, no en profiles
+                const { data: member } = await supabase
+                    .from('organization_members')
+                    .select('organization_id')
+                    .eq('user_id', user.id)
+                    .single();
+                
+                currentOrgId = member?.organization_id;
+            }
+        }
+
+        if (currentOrgId) {
             let query = supabase
                 .from('songs')
                 .select('*')
-                .eq('organization_id', profile.organization_id) // <--- FILTRO IMPORTANTE
+                .eq('organization_id', currentOrgId)
                 .order('title', { ascending: true });
             
             if (searchTerm) {
@@ -42,10 +66,13 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
             }
 
             const { data } = await query;
-            if (data) setSongs(data);
+            if (data) setSongs(data as any);
         }
+    } catch (error) {
+        console.error("Error cargando canciones:", error);
+    } finally {
+        setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -59,24 +86,29 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
     setIsSaving(true);
 
     try {
-      // 1. Obtener Org ID para asegurar dónde guardamos
+      // 1. Obtener Org ID seguro
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No autenticado");
       
-      const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single();
-      if (!profile?.organization_id) throw new Error("No tienes organización.");
+      // CORRECCIÓN: Buscamos la org correctamente
+      const { data: member } = await supabase
+          .from('organization_members')
+          .select('organization_id')
+          .eq('user_id', user.id)
+          .single();
+          
+      if (!member?.organization_id) throw new Error("No tienes organización.");
 
       // 2. Guardar (Insertar o Actualizar)
       if (editingSong.id === 'new') {
         // CREAR NUEVA
-        const { id, ...songData } = editingSong;
         const { error } = await supabase.from('songs').insert([{
-            title: songData.title,
-            artist: songData.artist,
-            bpm: songData.bpm,
-            default_key: songData.default_key,
-            content: songData.content,
-            organization_id: profile.organization_id, // <--- ESTO FALTABA
+            title: editingSong.title,
+            artist: editingSong.artist,
+            bpm: editingSong.bpm,
+            default_key: editingSong.default_key,
+            content: editingSong.content,
+            organization_id: member.organization_id, // Usamos el ID corregido
             duration_seconds: 300
         }]);
         if (error) throw error;
@@ -95,9 +127,9 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
         if (error) throw error;
       }
 
-      alert("¡Canción guardada correctamente!");
+      // Éxito
       setEditingSong(null);
-      fetchSongs();
+      fetchSongs(); // Recargar lista
 
     } catch (error: any) {
       console.error(error);
@@ -113,21 +145,20 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
     if (!error) {
       fetchSongs();
       if (editingSong?.id === id) setEditingSong(null);
+    } else {
+        alert("Error al borrar");
     }
   };
 
   const handleNewSong = () => {
     setEditingSong({
       id: 'new',
-      user_id: '',
       title: '',
       artist: '',
       bpm: 70,
-      time_signature: '4/4',
       default_key: 'C',
-      duration_seconds: 300,
       content: '',
-      created_at: ''
+      duration_seconds: 300
     });
   };
 
@@ -136,7 +167,7 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
   // --- VISTA EDITOR ---
   if (editingSong) {
     return (
-      <div className="max-w-4xl mx-auto pb-20">
+      <div className="max-w-4xl mx-auto pb-20 animate-in slide-in-from-right duration-300">
         <div className="flex items-center justify-between mb-6">
           <button 
             onClick={() => setEditingSong(null)}
@@ -245,9 +276,9 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
 
   // --- VISTA LISTA ---
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6 h-full flex flex-col">
        
-       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+       <div className="flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
           <h1 className="text-2xl font-bold text-gray-900">Biblioteca de Canciones</h1>
           <button 
             onClick={handleNewSong}
@@ -258,7 +289,7 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
        </div>
 
        {/* Buscador */}
-       <div className="relative">
+       <div className="relative shrink-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
           <input 
             type="text" 
@@ -269,38 +300,40 @@ export default function SongLibrary({ onBack }: SongLibraryProps) {
           />
        </div>
 
-       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex-1 flex flex-col">
           {loading ? (
              <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-gray-400"/></div>
           ) : songs.length === 0 ? (
              <div className="p-10 text-center text-gray-400">No se encontraron canciones en tu organización.</div>
           ) : (
-             <div className="divide-y divide-gray-100">
-                {songs.map(song => (
-                   <div 
-                     key={song.id} 
-                     onClick={() => setEditingSong(song)}
-                     className="p-4 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-                   >
-                      <div className="flex items-center gap-4">
-                         <div className="bg-blue-50 text-blue-600 p-2 rounded-lg">
-                            <Music size={20} />
-                         </div>
-                         <div>
-                            <div className="font-bold text-gray-900">{song.title}</div>
-                            <div className="text-xs text-gray-500">{song.artist}</div>
-                         </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-6">
-                         <div className="hidden sm:flex flex-col items-end">
-                            <span className="text-xs font-bold bg-gray-100 px-2 py-0.5 rounded text-gray-600">{song.default_key}</span>
-                            <span className="text-[10px] text-gray-400 mt-1">{song.bpm} bpm</span>
-                         </div>
-                         <Edit3 size={18} className="text-gray-300 group-hover:text-blue-500" />
-                      </div>
-                   </div>
-                ))}
+             <div className="overflow-y-auto flex-1">
+                 <div className="divide-y divide-gray-100">
+                    {songs.map(song => (
+                    <div 
+                        key={song.id} 
+                        onClick={() => setEditingSong(song)}
+                        className="p-4 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className="bg-blue-50 text-blue-600 p-2 rounded-lg">
+                                <Music size={20} />
+                            </div>
+                            <div>
+                                <div className="font-bold text-gray-900">{song.title}</div>
+                                <div className="text-xs text-gray-500">{song.artist}</div>
+                            </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-6">
+                            <div className="hidden sm:flex flex-col items-end">
+                                <span className="text-xs font-bold bg-gray-100 px-2 py-0.5 rounded text-gray-600">{song.default_key}</span>
+                                <span className="text-[10px] text-gray-400 mt-1">{song.bpm} bpm</span>
+                            </div>
+                            <Edit3 size={18} className="text-gray-300 group-hover:text-blue-500" />
+                        </div>
+                    </div>
+                    ))}
+                 </div>
              </div>
           )}
        </div>
