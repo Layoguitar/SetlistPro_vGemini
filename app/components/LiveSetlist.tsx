@@ -82,7 +82,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [isScrolling, setIsScrolling] = useState(false);
   const [scrollSpeed, setScrollSpeed] = useState(1);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const scrollAccumulator = useRef(0); // LA ALCANCÍA DE PÍXELES 🐷
+  const scrollAccumulator = useRef(0); 
 
   // --- SINCRONIZACIÓN ---
   const [role, setRole] = useState<'admin' | 'member' | null>(null);
@@ -91,24 +91,20 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
 
   useEffect(() => { itemsRef.current = items; }, [items]);
 
-  // Lógica de Auto-Scroll Mejorada para Móvil
+  // Lógica de Auto-Scroll (CORREGIDA)
   useEffect(() => {
-    let animationFrameId: number;
-    
+    let animationFrameId = 0; // CORRECCIÓN 1: Inicializamos en 0
+
     const scroll = () => {
         if (scrollContainerRef.current && isScrolling) {
-            // Sumamos decimales a la alcancía
-            // Multiplicamos por 0.5 para que la velocidad 1 sea suave
             scrollAccumulator.current += (scrollSpeed * 0.5); 
             
-            // Solo movemos si tenemos al menos 1 píxel completo
             if (scrollAccumulator.current >= 1) {
                 const pixelsToMove = Math.floor(scrollAccumulator.current);
                 scrollContainerRef.current.scrollTop += pixelsToMove;
-                scrollAccumulator.current -= pixelsToMove; // Guardamos el cambio
+                scrollAccumulator.current -= pixelsToMove; 
             }
             
-            // Detectar fin de página
             if (scrollContainerRef.current.scrollTop + scrollContainerRef.current.clientHeight >= scrollContainerRef.current.scrollHeight - 2) {
                 setIsScrolling(false);
             } else {
@@ -119,11 +115,13 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
 
     if (isScrolling) {
         animationFrameId = requestAnimationFrame(scroll);
-    } else {
-        cancelAnimationFrame(animationFrameId);
-    }
+    } 
+    // CORRECCIÓN 2: Quitamos el 'else { cancelAnimationFrame }' que daba error.
+    // La limpieza se hace automáticamente en el return de abajo.
 
-    return () => cancelAnimationFrame(animationFrameId);
+    return () => {
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
   }, [isScrolling, scrollSpeed]);
 
   useEffect(() => {
@@ -264,7 +262,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   };
 
   return (
-    // FIX: h-[100dvh] para móviles
     <div className={`fixed inset-0 z-50 flex h-[100dvh] w-full overflow-hidden ${deskTheme.bg} transition-colors duration-300`}>
       {isMobile && sidebarOpen && (
         <div className="fixed inset-0 bg-black/80 z-[60] backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
