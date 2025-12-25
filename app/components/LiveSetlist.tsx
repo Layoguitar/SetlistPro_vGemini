@@ -17,9 +17,9 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [isConnected, setIsConnected] = useState(false);
   
   // ESTADOS DE INTERFAZ
-  // IMPORTANTE: Empezamos cerrado para evitar parpadeos en móvil
+  // IMPORTANTE: Empezamos cerrado para evitar que tape la pantalla en móvil
   const [sidebarOpen, setSidebarOpen] = useState(false); 
-  const [isMobile, setIsMobile] = useState(true); // Asumimos móvil al inicio
+  const [isMobile, setIsMobile] = useState(true); 
 
   // CONFIGURACIÓN VISUAL
   const [fontSize, setFontSize] = useState(16);
@@ -27,12 +27,12 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [twoColumns, setTwoColumns] = useState(true);
   const [columnFillBalance, setColumnFillBalance] = useState(false);
 
-  // DETECTAR PANTALLA Y ABRIR MENÚ SOLO SI ES PC
+  // DETECTAR TAMAÑO DE PANTALLA
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth < 1024; // Consideramos móvil/tablet pequeña
+      const mobile = window.innerWidth < 1024; // Detectamos si es pantalla chica
       setIsMobile(mobile);
-      // Si es pantalla grande, abrimos el menú automáticamente
+      // Si es PC (pantalla grande), abrimos el menú automáticamente
       if (!mobile) setSidebarOpen(true);
     };
     
@@ -66,7 +66,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     return () => { supabase.removeChannel(channel); };
   }, [setlistId]);
 
-  // --- PARSEADOR ---
+  // --- PARSEADOR (Divide la canción en bloques) ---
   const parseSongSections = (content: string) => {
     if (!content) return [];
     const lines = content.split('\n');
@@ -88,13 +88,13 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     return sections;
   };
 
-  // --- PAGINADOR ---
+  // --- PAGINADOR (Calcula cuándo cortar la hoja) ---
   const paginateSections = (sections: { title: string, body: string[] }[]) => {
     const pages: { title: string, body: string[] }[][] = [];
     let currentPage: { title: string, body: string[] }[] = [];
     let currentHeight = 0; 
     
-    // Ajuste dinámico de líneas por página
+    // En celular caben menos líneas, ajustamos el límite
     const PAGE_HEIGHT_LIMIT = isMobile ? 35 : (twoColumns ? 52 : 45); 
 
     sections.forEach(section => {
@@ -118,7 +118,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   
   const pages = paginateSections(allSections);
 
-  // TEMAS
+  // TEMAS DE COLORES
   const deskTheme = {
     bg: paperMode ? 'bg-zinc-800' : 'bg-black',
     sidebar: paperMode ? 'bg-zinc-900 border-zinc-700 text-gray-400' : 'bg-zinc-950 border-zinc-800 text-gray-500',
@@ -138,7 +138,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   return (
     <div className={`fixed inset-0 z-50 flex h-screen w-full overflow-hidden ${deskTheme.bg} transition-colors duration-300`}>
       
-      {/* --- FONDO OSCURO PARA EL MENÚ MÓVIL --- */}
+      {/* --- FONDO OSCURO PARA EL MENÚ EN MÓVIL --- */}
       {isMobile && sidebarOpen && (
         <div 
             className="fixed inset-0 bg-black/80 z-[60] backdrop-blur-sm"
@@ -151,7 +151,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
         className={`
             fixed top-0 left-0 h-full z-[70] flex flex-col border-r transition-transform duration-300 shadow-2xl
             ${deskTheme.sidebar}
-            ${/* EN MÓVIL ES ABSOLUTO (width 85%), EN PC ES RELATIVO (width 80px o 320px) */ ''}
+            ${/* EN MÓVIL OCUPA 85%, EN PC ES FIJO DE 320PX */ ''}
             ${isMobile ? 'w-[85%]' : 'w-80 relative'}
             ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:w-0 lg:overflow-hidden'}
         `}
@@ -160,7 +160,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
             <button onClick={onBack} className="flex items-center gap-2 text-sm hover:text-white transition-colors">
                 <ArrowLeft size={16} /> Salir
             </button>
-            {/* Botón cerrar en móvil */}
+            {/* Botón cerrar X solo en móvil */}
             {isMobile && (
                 <button onClick={() => setSidebarOpen(false)} className="p-2 bg-white/10 rounded-full text-white">
                     <X size={20} />
@@ -182,7 +182,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                     key={item.id} 
                     onClick={() => {
                         setSelectedItem(item);
-                        if (isMobile) setSidebarOpen(false); // Cerrar menú al tocar
+                        if (isMobile) setSidebarOpen(false); // Al elegir canción, cerrar menú en móvil
                     }} 
                     className={`p-4 border-b border-transparent cursor-pointer flex gap-3 items-center border-l-4 hover:bg-white/5 ${selectedItem?.id === item.id ? deskTheme.itemActive : 'border-l-transparent'}`}
                 >
@@ -196,17 +196,17 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
         </div>
       </div>
 
-      {/* --- ÁREA PRINCIPAL (HOJA) --- */}
+      {/* --- ÁREA PRINCIPAL (HOJA DE CANCIÓN) --- */}
       <div className="flex-1 flex flex-col relative h-full overflow-hidden w-full bg-transparent">
          
          {/* BARRA DE HERRAMIENTAS FLOTANTE */}
          <div className="absolute top-4 right-4 z-50 flex items-center gap-2 print:hidden">
             
-            {/* Botón Menú Hamburguesa (Si el menú está cerrado) */}
+            {/* Botón Menú Hamburguesa (Aparece si el menú está cerrado) */}
             {!sidebarOpen && (
                 <button 
                     onClick={() => setSidebarOpen(true)} 
-                    className="p-2.5 rounded-full bg-blue-600 text-white shadow-lg animate-in fade-in"
+                    className="p-2.5 rounded-full bg-blue-600 text-white shadow-lg animate-in fade-in hover:bg-blue-500"
                 >
                     <Menu size={20} />
                 </button>
@@ -218,7 +218,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                         {paperMode ? <FileText size={18} /> : <Moon size={18} />}
                     </button>
                     
-                    {/* Ocultar columnas en móvil */}
+                    {/* Botón columnas (oculto en móvil para no romper la hoja) */}
                     <button onClick={() => setTwoColumns(!twoColumns)} className="hidden lg:flex p-2 rounded-lg hover:bg-white/20 text-white">
                         <Columns size={18} />
                     </button>
@@ -232,7 +232,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
          </div>
 
          {selectedItem ? (
-            <div className={`flex-1 overflow-y-auto ${selectedItem.type === 'song' ? 'p-2 md:p-8' : 'p-0'} flex flex-col items-center gap-6`}>
+            <div className={`flex-1 overflow-y-auto ${selectedItem.type === 'song' ? 'p-2 md:p-8' : 'p-0'} flex flex-col items-center gap-4 md:gap-6`}>
                 
                 {/* --- RENDERIZADO DE PÁGINAS --- */}
                 {selectedItem.type === 'song' ? (
@@ -248,7 +248,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                             `}
                             style={{ fontSize: `${isMobile ? fontSize + 2 : fontSize}px` }}
                         >
-                            {/* CABECERA */}
+                            {/* CABECERA (Solo pág 1) */}
                             {pageIndex === 0 ? (
                                 <div className={`mb-4 border-b-2 pb-2 flex justify-between items-end shrink-0 ${paperTheme.headerBorder}`}>
                                     <div className="max-w-[70%]">
@@ -279,7 +279,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                     {pageSections.map((section, idx) => (
                                         <div key={idx} className="break-inside-avoid mb-6 inline-block w-full">
                                             {section.title && (
-                                                <div className="mb-1">
+                                                <div className="mb-2">
                                                     <span className={`
                                                         inline-block px-3 py-0.5 rounded-full text-[0.8em] font-black uppercase tracking-widest border shadow-sm
                                                         ${paperTheme.sectionTitleBg} ${paperTheme.sectionTitleText}
@@ -312,6 +312,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                      <div className="text-white opacity-50 mt-20">Sin contenido.</div>
                    )
                 ) : (
+                   // --- MODO BLOQUE (SIMPLE) ---
                    <div className="flex-1 w-full h-full flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm min-h-[50vh]">
                       <div className="text-center w-full">
                           <h1 className="text-4xl md:text-8xl font-serif italic text-white/90 drop-shadow-2xl break-words">
