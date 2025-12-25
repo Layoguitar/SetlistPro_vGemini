@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { ArrowLeft, Wifi, Type, Moon, Columns, FileText, Music, Menu, X, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, Wifi, Type, Moon, FileText, Music, Menu, X, Minus, Plus } from 'lucide-react';
 import type { SetlistItem } from '@/types/database';
 
 interface LiveSetlistProps {
@@ -42,9 +42,7 @@ const isChordLineStrict = (line: string) => {
     
     if (line.trim().startsWith("//")) return false;
 
-    // Regex estricto para acordes
     const chordRegex = /^[A-G][#b]?(m|maj|dim|aug|sus|add|2|4|5|6|7|9|11|13)*(\/[A-G][#b]?)?$/;
-    // Lista ampliada de palabras comunes para evitar falsos positivos
     const bannedWords = [
         "A", "En", "La", "Y", "O", "Tu", "Te", "Se", "Me", "Si", "No", "Es", "Un", "El", "Al", "Del", "Lo", "Le", 
         "Con", "Por", "Sus", "Mis", "Las", "Los", "De", "Da", "Do", "Re", "Mi", "Fa", "Sol"
@@ -53,7 +51,6 @@ const isChordLineStrict = (line: string) => {
     let chordCount = 0;
     words.forEach(w => {
         const cleanWord = w.replace(/[.,:;()]/g, '');
-        // Solo cuenta como acorde si pasa el regex Y no es una palabra prohibida
         if (chordRegex.test(cleanWord) && !bannedWords.includes(cleanWord)) {
             chordCount++;
         }
@@ -82,11 +79,9 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false); 
   const [isMobile, setIsMobile] = useState(true); 
 
-  // Ajustes visuales
-  const [fontSize, setFontSize] = useState(16);
+  // Ajustes visuales (SIN COLUMNAS)
+  const [fontSize, setFontSize] = useState(18); // Letra un poco más grande por defecto al ser 1 columna
   const [paperMode, setPaperMode] = useState(true); 
-  const [twoColumns, setTwoColumns] = useState(true);
-  const [columnFillBalance, setColumnFillBalance] = useState(false);
   const [transposeStep, setTransposeStep] = useState(0);
 
   useEffect(() => { setTransposeStep(0); }, [selectedItem?.id]);
@@ -143,7 +138,10 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     const pages: { title: string, body: string[] }[][] = [];
     let currentPage: { title: string, body: string[] }[] = [];
     let currentHeight = 0; 
-    const PAGE_HEIGHT_LIMIT = isMobile ? 35 : (twoColumns ? 52 : 45); 
+    
+    // Límite de líneas por página (Ajustado para 1 sola columna)
+    // En 1 columna caben aprox 45 líneas cómodas en una hoja A4 con letra 16-18px
+    const PAGE_HEIGHT_LIMIT = isMobile ? 35 : 45; 
 
     sections.forEach(section => {
       const sectionHeight = 3 + section.body.length;
@@ -227,11 +225,10 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                     </div>
                     <div className="w-px h-5 bg-white/20 mx-1"></div>
                     <button onClick={() => setPaperMode(!paperMode)} className="p-2 rounded-lg hover:bg-white/20 text-white">{paperMode ? <FileText size={18} /> : <Moon size={18} />}</button>
-                    <button onClick={() => setTwoColumns(!twoColumns)} className="hidden lg:flex p-2 rounded-lg hover:bg-white/20 text-white"><Columns size={18} /></button>
                     <div className="w-px h-5 bg-white/20 mx-1 hidden md:block"></div>
                     <div className="hidden md:flex">
                         <button onClick={() => setFontSize(s => Math.max(12, s - 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={14} className="scale-75"/></button>
-                        <button onClick={() => setFontSize(s => Math.min(36, s + 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={18}/></button>
+                        <button onClick={() => setFontSize(s => Math.min(48, s + 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={18}/></button>
                     </div>
                 </div>
             )}
@@ -242,7 +239,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                 {selectedItem.type === 'song' ? (
                    pages.length > 0 ? (
                      pages.map((pageSections, pageIndex) => (
-                        <div key={pageIndex} className={`w-full transition-all duration-300 relative shrink-0 ${paperTheme.bg} ${paperTheme.text} ${paperTheme.shadow} p-4 md:p-[15mm] rounded-sm flex flex-col ${isMobile ? 'min-h-[85vh] mb-4' : 'max-w-[210mm] h-[297mm]'}`} style={{ fontSize: `${isMobile ? fontSize + 2 : fontSize}px` }}>
+                        <div key={pageIndex} className={`w-full transition-all duration-300 relative shrink-0 ${paperTheme.bg} ${paperTheme.text} ${paperTheme.shadow} p-4 md:p-[20mm] rounded-sm flex flex-col ${isMobile ? 'min-h-[85vh] mb-4' : 'max-w-[210mm] h-[297mm]'}`} style={{ fontSize: `${isMobile ? fontSize + 2 : fontSize}px` }}>
                             {pageIndex === 0 ? (
                                 <div className={`mb-4 border-b-2 pb-2 flex justify-between items-end shrink-0 ${paperTheme.headerBorder}`}>
                                     <div className="max-w-[70%]">
@@ -257,17 +254,8 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                             ) : <div className="h-4 w-full shrink-0"></div>}
 
                             <div className="flex-1 min-h-0">
-                                <div 
-                                    // CORRECCIÓN CLAVE: whitespace-pre-wrap permite que el texto baje si es muy largo
-                                    // break-words asegura que no se desborde horizontalmente
-                                    className={`
-                                        w-full font-mono whitespace-pre-wrap break-words leading-relaxed overflow-x-hidden
-                                        ${twoColumns && !isMobile ? 'columns-2 gap-[10mm]' : 'columns-1'}
-                                    `}
-                                    style={{ columnFill: columnFillBalance ? 'balance' : 'auto' }} 
-                                >
+                                <div className="w-full font-mono whitespace-pre-wrap break-words leading-relaxed overflow-x-hidden columns-1">
                                     {pageSections.map((section, idx) => (
-                                        // CORRECCIÓN CLAVE: 'block' en vez de 'inline-block' para evitar conflictos de ancho
                                         <div key={idx} className="break-inside-avoid mb-6 block w-full">
                                             {section.title && (
                                                 <div className="mb-2">
