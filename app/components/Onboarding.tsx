@@ -2,182 +2,202 @@
 
 import React, { useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Users, ArrowRight, Loader2 } from 'lucide-react';
+import { Users, UserPlus, ArrowRight, Loader2, Music } from 'lucide-react';
 
 interface OnboardingProps {
-  userId: string;
-  userEmail: string;
-  onComplete: () => void; // Avisar que terminamos para recargar
+  onComplete: () => void; // Avisar al padre que ya terminamos
 }
 
-export default function Onboarding({ userId, userEmail, onComplete }: OnboardingProps) {
-  const [mode, setMode] = useState<'start' | 'create' | 'join'>('start');
-  const [orgName, setOrgName] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
-  const [fullName, setFullName] = useState("");
+export default function Onboarding({ onComplete }: OnboardingProps) {
+  const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu');
+  const [orgName, setOrgName] = useState('');
+  const [joinCode, setJoinCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  // 1. CREAR NUEVA ORGANIZACIÓN (LIDER)
-  const handleCreateOrg = async () => {
+  // Lógica: CREAR NUEVA BANDA
+  const handleCreate = async () => {
+    if (!orgName.trim()) return;
     setLoading(true);
+    setError('');
+
     try {
-      // A. Crear la Org
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No usuario");
+
+      // 1. Crear la Organización
       const { data: org, error: orgError } = await supabase
         .from('organizations')
-        .insert([{ name: orgName }])
+        .insert([{ name: orgName, owner_id: user.id }])
         .select()
         .single();
-      
+
       if (orgError) throw orgError;
 
-      // B. Crear el Perfil del Admin vinculado a esa Org
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert([{
-          id: userId,
-          full_name: fullName,
-          role: 'admin', // El que crea es Admin
-          organization_id: org.id,
-          main_instrument: 'Director'
+      // 2. Añadirme como Miembro (Admin)
+      const { error: memberError } = await supabase
+        .from('organization_members')
+        .insert([{ 
+            organization_id: org.id, 
+            user_id: user.id, 
+            role: 'admin' 
         }]);
 
-      if (profileError) throw profileError;
+      if (memberError) throw memberError;
 
-      onComplete(); // ¡Listo!
-    } catch (error: any) {
-      alert("Error: " + error.message);
+      // ¡Éxito!
+      onComplete();
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Error al crear la banda');
     } finally {
       setLoading(false);
     }
   };
 
-  // 2. UNIRSE CON CÓDIGO (MÚSICO)
-  const handleJoinOrg = async () => {
+  // Lógica: UNIRSE A BANDA EXISTENTE
+  const handleJoin = async () => {
+    if (!joinCode.trim()) return;
     setLoading(true);
+    setError('');
+
     try {
-      // A. Buscar la Org por el código
-      const { data: org, error: findError } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No usuario");
+
+      // 1. Verificar si la org existe (buscando por ID)
+      // Nota: En el futuro usaremos un código corto, por ahora es el UUID largo
+      const { data: org, error: orgCheckError } = await supabase
         .from('organizations')
         .select('id')
-        .eq('invite_code', inviteCode.trim())
+        .eq('id', joinCode) // Aquí asumimos que el usuario pegó el UUID
         .single();
 
-      if (findError || !org) throw new Error("Código de invitación inválido");
+      if (orgCheckError || !org) throw new Error("No se encontró una banda con ese código ID.");
 
-      // B. Crear el Perfil del Músico vinculado a esa Org
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert([{
-          id: userId,
-          full_name: fullName,
-          role: 'musician', // El que se une es Músico
-          organization_id: org.id,
-          main_instrument: 'Por definir'
+      // 2. Insertar miembro
+      const { error: joinError } = await supabase
+        .from('organization_members')
+        .insert([{ 
+            organization_id: org.id, 
+            user_id: user.id, 
+            role: 'member' 
         }]);
 
-      if (profileError) throw profileError;
+      if (joinError) {
+          if (joinError.code === '23505') throw new Error("Ya eres miembro de esta banda.");
+          throw joinError;
+      }
 
       onComplete();
-    } catch (error: any) {
-      alert(error.message);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Error al unirse');
     } finally {
       setLoading(false);
     }
   };
 
-  // VISTA 1: ELEGIR CAMINO
-  if (mode === 'start') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl text-center space-y-6">
-          <h1 className="text-2xl font-bold text-gray-900">¡Casi estamos listos!</h1>
-          <p className="text-gray-500">Para empezar, dinos tu nombre.</p>
-          <input 
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 font-bold text-center text-lg outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Tu Nombre y Apellido"
-            value={fullName}
-            onChange={e => setFullName(e.target.value)}
-          />
-          
-          {fullName.length > 2 && (
-            <div className="grid gap-4 animate-in fade-in slide-in-from-bottom-4">
-              <button onClick={() => setMode('create')} className="bg-black text-white p-4 rounded-xl font-bold hover:bg-gray-800 transition-all flex items-center justify-between group">
-                <div className="text-left">
-                  <div className="text-sm text-gray-400 font-normal">Soy Líder</div>
-                  <div>Crear mi Iglesia/Banda</div>
-                </div>
-                <ArrowRight className="group-hover:translate-x-1 transition-transform"/>
-              </button>
+  return (
+    <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
+      {/* Fondo decorativo */}
+      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-900/20 rounded-full blur-[120px]" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-purple-900/20 rounded-full blur-[120px]" />
 
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
-                <div className="relative flex justify-center text-sm"><span className="px-2 bg-white text-gray-500">O</span></div>
-              </div>
-
-              <button onClick={() => setMode('join')} className="bg-white border-2 border-gray-200 text-gray-900 p-4 rounded-xl font-bold hover:border-blue-500 hover:text-blue-600 transition-all flex items-center justify-between group">
-                <div className="text-left">
-                  <div className="text-sm text-gray-400 font-normal">Soy Músico</div>
-                  <div>Tengo invitación</div>
-                </div>
-                <Users className="group-hover:scale-110 transition-transform"/>
-              </button>
+      <div className="max-w-md w-full relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700">
+        <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-gradient-to-tr from-blue-600 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-2xl mb-4">
+                <Music size={32} className="text-white" />
             </div>
-          )}
+            <h1 className="text-3xl font-bold mb-2">Bienvenido a Setlist Pro</h1>
+            <p className="text-gray-400">Para comenzar, necesitas un equipo.</p>
         </div>
-      </div>
-    );
-  }
 
-  // VISTA 2: CREAR
-  if (mode === 'create') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl space-y-6">
-          <h2 className="text-xl font-bold text-gray-900">Nombra tu Equipo</h2>
-          <input 
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Ej. Iglesia Central, Banda Rock..."
-            value={orgName}
-            onChange={e => setOrgName(e.target.value)}
-          />
-          <button 
-            onClick={handleCreateOrg} 
-            disabled={!orgName || loading}
-            className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 flex justify-center"
-          >
-            {loading ? <Loader2 className="animate-spin"/> : "Crear y Entrar"}
-          </button>
-          <button onClick={() => setMode('start')} className="w-full text-gray-400 text-sm hover:text-gray-600">Volver</button>
-        </div>
-      </div>
-    );
-  }
+        {error && (
+            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-200 text-sm text-center">
+                {error}
+            </div>
+        )}
 
-  // VISTA 3: UNIRSE
-  if (mode === 'join') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl space-y-6">
-          <h2 className="text-xl font-bold text-gray-900">Ingresa el Código</h2>
-          <p className="text-sm text-gray-500">Pídele el código de invitación a tu líder.</p>
-          <input 
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 font-mono text-center tracking-widest text-xl uppercase"
-            placeholder="XXXXXX"
-            value={inviteCode}
-            onChange={e => setInviteCode(e.target.value)}
-          />
-          <button 
-            onClick={handleJoinOrg} 
-            disabled={inviteCode.length < 6 || loading}
-            className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 disabled:opacity-50 flex justify-center"
-          >
-            {loading ? <Loader2 className="animate-spin"/> : "Unirme al Equipo"}
-          </button>
-          <button onClick={() => setMode('start')} className="w-full text-gray-400 text-sm hover:text-gray-600">Volver</button>
-        </div>
-      </div>
-    );
-  }
+        {mode === 'menu' && (
+            <div className="space-y-4">
+                <button onClick={() => setMode('create')} className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-6 rounded-2xl flex items-center gap-4 transition-all group text-left">
+                    <div className="p-3 bg-blue-500/20 text-blue-400 rounded-xl group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                        <Users size={24} />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-lg">Crear nueva Banda</h3>
+                        <p className="text-xs text-gray-500 mt-1">Serás el administrador y podrás invitar a otros.</p>
+                    </div>
+                    <ArrowRight className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
 
-  return null;
+                <button onClick={() => setMode('join')} className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-6 rounded-2xl flex items-center gap-4 transition-all group text-left">
+                    <div className="p-3 bg-purple-500/20 text-purple-400 rounded-xl group-hover:bg-purple-500 group-hover:text-white transition-colors">
+                        <UserPlus size={24} />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-lg">Unirme a un Equipo</h3>
+                        <p className="text-xs text-gray-500 mt-1">Si ya tienes un código de invitación, úsalo aquí.</p>
+                    </div>
+                    <ArrowRight className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+            </div>
+        )}
+
+        {mode === 'create' && (
+            <div className="bg-white/5 border border-white/10 p-6 rounded-2xl">
+                <h3 className="font-bold text-xl mb-4">Nombra tu Banda</h3>
+                <input 
+                    type="text" 
+                    placeholder="Ej: Alabanza Domingo, Los Rockeros..." 
+                    className="w-full bg-black/50 border border-white/20 rounded-xl p-4 text-white placeholder:text-gray-600 focus:outline-none focus:border-blue-500 mb-6"
+                    value={orgName}
+                    onChange={(e) => setOrgName(e.target.value)}
+                    autoFocus
+                />
+                <div className="flex gap-3">
+                    <button onClick={() => setMode('menu')} className="flex-1 py-3 rounded-xl font-bold hover:bg-white/10 transition-colors text-sm">Atrás</button>
+                    <button 
+                        onClick={handleCreate} 
+                        disabled={loading || !orgName.trim()}
+                        className="flex-[2] bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+                    >
+                        {loading && <Loader2 className="animate-spin" size={18}/>}
+                        Crear Banda
+                    </button>
+                </div>
+            </div>
+        )}
+
+        {mode === 'join' && (
+            <div className="bg-white/5 border border-white/10 p-6 rounded-2xl">
+                <h3 className="font-bold text-xl mb-4">Código de Equipo</h3>
+                <p className="text-xs text-gray-500 mb-4">Pide al administrador que copie el ID de la organización (ej: 550e8400...)</p>
+                <input 
+                    type="text" 
+                    placeholder="Pega el código aquí..." 
+                    className="w-full bg-black/50 border border-white/20 rounded-xl p-4 text-white placeholder:text-gray-600 focus:outline-none focus:border-purple-500 mb-6 font-mono text-sm"
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value)}
+                    autoFocus
+                />
+                <div className="flex gap-3">
+                    <button onClick={() => setMode('menu')} className="flex-1 py-3 rounded-xl font-bold hover:bg-white/10 transition-colors text-sm">Atrás</button>
+                    <button 
+                        onClick={handleJoin} 
+                        disabled={loading || !joinCode.trim()}
+                        className="flex-[2] bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+                    >
+                        {loading && <Loader2 className="animate-spin" size={18}/>}
+                        Unirme
+                    </button>
+                </div>
+            </div>
+        )}
+      </div>
+    </div>
+  );
 }
