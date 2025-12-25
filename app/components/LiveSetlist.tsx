@@ -39,21 +39,15 @@ const transposeChord = (chord: string, amount: number) => {
 const isChordLineStrict = (line: string) => {
     const words = line.trim().split(/\s+/);
     if (words.length === 0) return false;
-    
     if (line.trim().startsWith("//")) return false;
 
     const chordRegex = /^[A-G][#b]?(m|maj|dim|aug|sus|add|2|4|5|6|7|9|11|13)*(\/[A-G][#b]?)?$/;
-    const bannedWords = [
-        "A", "En", "La", "Y", "O", "Tu", "Te", "Se", "Me", "Si", "No", "Es", "Un", "El", "Al", "Del", "Lo", "Le", 
-        "Con", "Por", "Sus", "Mis", "Las", "Los", "De", "Da", "Do", "Re", "Mi", "Fa", "Sol"
-    ];
+    const bannedWords = ["A", "En", "La", "Y", "O", "Tu", "Te", "Se", "Me", "Si", "No", "Es", "Un", "El", "Al", "Del", "Lo", "Le", "Con", "Por", "Sus", "Mis", "Las", "Los", "De", "Da", "Do", "Re", "Mi", "Fa", "Sol"];
     
     let chordCount = 0;
     words.forEach(w => {
         const cleanWord = w.replace(/[.,:;()]/g, '');
-        if (chordRegex.test(cleanWord) && !bannedWords.includes(cleanWord)) {
-            chordCount++;
-        }
+        if (chordRegex.test(cleanWord) && !bannedWords.includes(cleanWord)) chordCount++;
     });
 
     return chordCount > 0 && (chordCount / words.length) >= 0.5;
@@ -79,8 +73,8 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false); 
   const [isMobile, setIsMobile] = useState(true); 
 
-  // Ajustes visuales (SIN COLUMNAS)
-  const [fontSize, setFontSize] = useState(18); // Letra un poco más grande por defecto al ser 1 columna
+  // Ajustes visuales
+  const [fontSize, setFontSize] = useState(18);
   const [paperMode, setPaperMode] = useState(true); 
   const [transposeStep, setTransposeStep] = useState(0);
 
@@ -139,9 +133,8 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     let currentPage: { title: string, body: string[] }[] = [];
     let currentHeight = 0; 
     
-    // Límite de líneas por página (Ajustado para 1 sola columna)
-    // En 1 columna caben aprox 45 líneas cómodas en una hoja A4 con letra 16-18px
-    const PAGE_HEIGHT_LIMIT = isMobile ? 35 : 45; 
+    // Límite de líneas por hoja para 1 sola columna
+    const PAGE_HEIGHT_LIMIT = isMobile ? 32 : 42; 
 
     sections.forEach(section => {
       const sectionHeight = 3 + section.body.length;
@@ -212,6 +205,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
 
       {/* ÁREA PRINCIPAL */}
       <div className="flex-1 flex flex-col relative h-full overflow-hidden w-full bg-transparent">
+         {/* HERRAMIENTAS */}
          <div className="absolute top-4 right-4 z-50 flex items-center gap-2 print:hidden flex-wrap justify-end">
             {!sidebarOpen && (
                 <button onClick={() => setSidebarOpen(true)} className="p-2.5 rounded-full bg-blue-600 text-white shadow-lg animate-in fade-in hover:bg-blue-500"><Menu size={20} /></button>
@@ -225,6 +219,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                     </div>
                     <div className="w-px h-5 bg-white/20 mx-1"></div>
                     <button onClick={() => setPaperMode(!paperMode)} className="p-2 rounded-lg hover:bg-white/20 text-white">{paperMode ? <FileText size={18} /> : <Moon size={18} />}</button>
+                    {/* Botón de columnas ELIMINADO */}
                     <div className="w-px h-5 bg-white/20 mx-1 hidden md:block"></div>
                     <div className="hidden md:flex">
                         <button onClick={() => setFontSize(s => Math.max(12, s - 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={14} className="scale-75"/></button>
@@ -253,8 +248,9 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                 </div>
                             ) : <div className="h-4 w-full shrink-0"></div>}
 
-                            <div className="flex-1 min-h-0">
-                                <div className="w-full font-mono whitespace-pre-wrap break-words leading-relaxed overflow-x-hidden columns-1">
+                            <div className="flex-1 min-h-0 w-full">
+                                {/* CONTENEDOR DE TEXTO: Single Column forzado, wrap automático y break-words */}
+                                <div className="w-full font-mono whitespace-pre-wrap break-words leading-relaxed overflow-x-hidden">
                                     {pageSections.map((section, idx) => (
                                         <div key={idx} className="break-inside-avoid mb-6 block w-full">
                                             {section.title && (
@@ -262,13 +258,13 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                                     <span className={`inline-block px-3 py-1 rounded-full text-[0.8em] font-black uppercase tracking-widest border shadow-sm ${paperTheme.sectionTitleBg} ${paperTheme.sectionTitleText}`}>{section.title}</span>
                                                 </div>
                                             )}
-                                            <div className="opacity-90 pl-1">
+                                            <div className="opacity-90 pl-1 w-full">
                                                 {section.body.map((line, lIdx) => {
                                                     const isChord = isChordLineStrict(line);
                                                     const content = isChord ? transposeLine(line, transposeStep) : line;
                                                     
                                                     return (
-                                                        <div key={lIdx} className="min-h-[1.2em]">
+                                                        <div key={lIdx} className="min-h-[1.2em] w-full">
                                                             {paperMode && isChord ? <span className={`font-bold ${paperTheme.chordColor}`}>{content}</span> : (content || ' ')}
                                                         </div>
                                                     );
