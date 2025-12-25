@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { ArrowLeft, Wifi, Type, Moon, FileText, Music, Menu, X, Minus, Plus, Radio, Zap } from 'lucide-react';
+import { ArrowLeft, Wifi, Type, Moon, FileText, Music, Menu, X, Minus, Plus, Radio, Zap, Play, Pause, ChevronsUp, ChevronsDown } from 'lucide-react';
 import type { SetlistItem } from '@/types/database';
 
 interface LiveSetlistProps {
@@ -78,15 +78,50 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [paperMode, setPaperMode] = useState(true); 
   const [transposeStep, setTransposeStep] = useState(0);
 
-  // --- SINCRONIZACIÓN EN TIEMPO REAL ---
-  const [role, setRole] = useState<'admin' | 'member' | null>(null);
-  const [syncEnabled, setSyncEnabled] = useState(true); // El usuario puede apagar la sync si quiere
-  const itemsRef = useRef<SetlistItem[]>([]); // Referencia para acceder a items dentro del callback de suscripción
+  // --- AUTO SCROLL ---
+  const [isScrolling, setIsScrolling] = useState(false);
+  const [scrollSpeed, setScrollSpeed] = useState(1); // 0.5 = Lento, 2 = Rápido
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Mantener la referencia actualizada
+  // --- SINCRONIZACIÓN ---
+  const [role, setRole] = useState<'admin' | 'member' | null>(null);
+  const [syncEnabled, setSyncEnabled] = useState(true);
+  const itemsRef = useRef<SetlistItem[]>([]); 
+
   useEffect(() => { itemsRef.current = items; }, [items]);
 
-  // 1. Cargar Perfil y Rol
+  // Lógica de Auto-Scroll
+  useEffect(() => {
+    let animationFrameId: number;
+    
+    const scroll = () => {
+        if (scrollContainerRef.current && isScrolling) {
+            // Movemos el scroll pixel a pixel
+            scrollContainerRef.current.scrollTop += (scrollSpeed * 0.5); 
+            
+            // Si llegamos al final, paramos
+            if (scrollContainerRef.current.scrollTop + scrollContainerRef.current.clientHeight >= scrollContainerRef.current.scrollHeight - 5) {
+                setIsScrolling(false);
+            } else {
+                animationFrameId = requestAnimationFrame(scroll);
+            }
+        }
+    };
+
+    if (isScrolling) {
+        animationFrameId = requestAnimationFrame(scroll);
+    }
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [isScrolling, scrollSpeed]);
+
+  // Resetear scroll al cambiar de canción
+  useEffect(() => {
+     setIsScrolling(false);
+     if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
+  }, [selectedItem?.id]);
+
+
   useEffect(() => {
     const checkRole = async () => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -98,52 +133,36 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     checkRole();
   }, []);
 
-  // 2. Suscripción a Cambios (DB + Broadcast)
   useEffect(() => {
-    // Canal único para este setlist
-    const channel = supabase.channel(`setlist_room_${setlistId}`, {
-        config: { broadcast: { self: false } } // No recibir mis propios mensajes
-    });
+    const channel = supabase.channel(`setlist_room_${setlistId}`, { config: { broadcast: { self: false } } });
 
     channel
-      // A. Escuchar cambios en la lista de canciones (DB)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'setlist_items', filter: `setlist_id=eq.${setlistId}` }, 
-        () => fetchData())
-      // B. Escuchar cambios de canción (Líder)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'setlist_items', filter: `setlist_id=eq.${setlistId}` }, () => fetchData())
       .on('broadcast', { event: 'song_change' }, ({ payload }) => {
-        // Solo cambiar si la sync está activada
         if (syncEnabled) {
             const newItem = itemsRef.current.find(i => i.id === payload.itemId);
             if (newItem) {
                 setSelectedItem(newItem);
-                setTransposeStep(0); // Resetear transposición al cambiar
+                setTransposeStep(0);
             }
         }
       })
-      .subscribe((status) => { 
-          if (status === 'SUBSCRIBED') setIsConnected(true); 
-      });
+      .subscribe((status) => { if (status === 'SUBSCRIBED') setIsConnected(true); });
 
     return () => { supabase.removeChannel(channel); };
-  }, [setlistId, syncEnabled]); // Reiniciar si cambia el estado de sync
+  }, [setlistId, syncEnabled]);
 
-  // 3. Función para cambiar canción
   const handleSelectItem = async (item: SetlistItem) => {
     setSelectedItem(item);
     setTransposeStep(0);
     if (isMobile) setSidebarOpen(false);
 
-    // SI SOY ADMIN: Enviar señal a todos
     if (role === 'admin') {
         await supabase.channel(`setlist_room_${setlistId}`).send({
-            type: 'broadcast',
-            event: 'song_change',
-            payload: { itemId: item.id }
+            type: 'broadcast', event: 'song_change', payload: { itemId: item.id }
         });
     }
   };
-
-  useEffect(() => { setTransposeStep(0); }, [selectedItem?.id]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -249,11 +268,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
              <h2 className="font-bold text-lg leading-tight truncate text-white">{setlistName}</h2>
              <div className="flex items-center gap-2 mt-1">
                  <p className="text-xs opacity-60 flex items-center gap-1">{items.length} canciones</p>
-                 {isConnected && (
-                    <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold flex items-center gap-1 animate-pulse">
-                        <Radio size={8} /> LIVE
-                    </span>
-                 )}
+                 {isConnected && <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold flex items-center gap-1 animate-pulse"><Radio size={8} /> LIVE</span>}
              </div>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -277,18 +292,27 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                 <button onClick={() => setSidebarOpen(true)} className="p-2.5 rounded-full bg-blue-600 text-white shadow-lg animate-in fade-in hover:bg-blue-500"><Menu size={20} /></button>
             )}
             
-            {/* PANEL DE CONTROL FLOTANTE */}
             <div className="flex items-center gap-2">
-                {/* BOTÓN DE SINCRONIZACIÓN */}
+                {/* BOTÓN PLAY (AUTO SCROLL) */}
+                {selectedItem?.type === 'song' && (
+                    <div className="flex items-center gap-1 bg-blue-600 text-white p-1 rounded-xl shadow-lg animate-in fade-in">
+                        <button onClick={() => setIsScrolling(!isScrolling)} className="p-2 hover:bg-white/20 rounded-lg transition-colors">
+                            {isScrolling ? <Pause size={18} className="animate-pulse" /> : <Play size={18} className="ml-0.5" />}
+                        </button>
+                        
+                        {/* Controles de velocidad (solo si está activo o pausado) */}
+                        <div className="flex flex-col gap-0.5 px-1 border-l border-white/20">
+                            <button onClick={() => setScrollSpeed(s => Math.min(5, s + 0.5))} className="hover:text-blue-200"><ChevronsUp size={10} /></button>
+                            <span className="text-[9px] font-bold font-mono leading-none text-center">{scrollSpeed}x</span>
+                            <button onClick={() => setScrollSpeed(s => Math.max(0.5, s - 0.5))} className="hover:text-blue-200"><ChevronsDown size={10} /></button>
+                        </div>
+                    </div>
+                )}
+
                 {role && (
                     <button 
                         onClick={() => setSyncEnabled(!syncEnabled)} 
-                        className={`
-                            flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border backdrop-blur-md shadow-lg transition-all
-                            ${syncEnabled 
-                                ? 'bg-emerald-500 text-white border-emerald-400' 
-                                : 'bg-black/60 text-gray-400 border-white/10 hover:bg-white/10'}
-                        `}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border backdrop-blur-md shadow-lg transition-all ${syncEnabled ? 'bg-emerald-500 text-white border-emerald-400' : 'bg-black/60 text-gray-400 border-white/10 hover:bg-white/10'}`}
                     >
                         {syncEnabled ? <Zap size={14} className="fill-current"/> : <Radio size={14} />}
                         {syncEnabled ? (role === 'admin' ? 'TRANSMITIENDO' : 'SINCRONIZADO') : 'SYNC OFF'}
@@ -315,15 +339,15 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
          </div>
 
          {selectedItem ? (
-            <div className={`flex-1 overflow-y-auto ${selectedItem.type === 'song' ? 'p-2 md:p-8' : 'p-0'} flex flex-col items-center gap-4 md:gap-6`}>
+            <div 
+                // REF PARA EL AUTO SCROLL
+                ref={scrollContainerRef}
+                className={`flex-1 overflow-y-auto scroll-smooth ${selectedItem.type === 'song' ? 'p-2 md:p-8' : 'p-0'} flex flex-col items-center gap-4 md:gap-6`}
+            >
                 {selectedItem.type === 'song' ? (
                    pages.length > 0 ? (
                      pages.map((pageSections, pageIndex) => (
-                        <div 
-                            key={pageIndex} 
-                            className={`w-full transition-all duration-300 relative shrink-0 ${paperTheme.bg} ${paperTheme.text} ${paperTheme.shadow} p-4 md:p-[20mm] rounded-sm flex flex-col ${isMobile ? 'min-h-[85vh] mb-4' : 'max-w-[210mm] h-[297mm]'}`} 
-                            style={{ fontSize: `${fontSize}px` }}
-                        >
+                        <div key={pageIndex} className={`w-full transition-all duration-300 relative shrink-0 ${paperTheme.bg} ${paperTheme.text} ${paperTheme.shadow} p-4 md:p-[20mm] rounded-sm flex flex-col ${isMobile ? 'min-h-[85vh] mb-4' : 'max-w-[210mm] h-[297mm]'}`} style={{ fontSize: `${fontSize}px` }}>
                             {pageIndex === 0 ? (
                                 <div className={`mb-4 border-b-2 pb-2 flex justify-between items-end shrink-0 ${paperTheme.headerBorder}`}>
                                     <div className="max-w-[70%]">
@@ -350,7 +374,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                                 {section.body.map((line, lIdx) => {
                                                     const isChord = isChordLineStrict(line);
                                                     const content = isChord ? transposeLine(line, transposeStep) : line;
-                                                    
                                                     return (
                                                         <div key={lIdx} className="min-h-[1.2em] w-full">
                                                             {paperMode && isChord ? <span className={`font-bold ${paperTheme.chordColor}`}>{content}</span> : (content || ' ')}
@@ -362,7 +385,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                                     ))}
                                 </div>
                             </div>
-                            
                             <div className="mt-auto pt-2 border-t border-current/10 flex justify-between text-[9px] opacity-40 uppercase tracking-widest font-bold shrink-0">
                                 <span>SetlistPro</span>
                                 <span>{pageIndex + 1} / {pages.length}</span>
