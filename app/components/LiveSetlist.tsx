@@ -74,7 +74,7 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
   const [isMobile, setIsMobile] = useState(true); 
 
   // Ajustes visuales
-  const [fontSize, setFontSize] = useState(18);
+  const [fontSize, setFontSize] = useState(16); // Bajamos un poco el default para asegurar que quepa
   const [paperMode, setPaperMode] = useState(true); 
   const [transposeStep, setTransposeStep] = useState(0);
 
@@ -133,8 +133,8 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     let currentPage: { title: string, body: string[] }[] = [];
     let currentHeight = 0; 
     
-    // Límite de líneas por hoja para 1 sola columna
-    const PAGE_HEIGHT_LIMIT = isMobile ? 32 : 42; 
+    // Límite de líneas por hoja
+    const PAGE_HEIGHT_LIMIT = isMobile ? 32 : 45; 
 
     sections.forEach(section => {
       const sectionHeight = 3 + section.body.length;
@@ -219,7 +219,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                     </div>
                     <div className="w-px h-5 bg-white/20 mx-1"></div>
                     <button onClick={() => setPaperMode(!paperMode)} className="p-2 rounded-lg hover:bg-white/20 text-white">{paperMode ? <FileText size={18} /> : <Moon size={18} />}</button>
-                    {/* Botón de columnas ELIMINADO */}
                     <div className="w-px h-5 bg-white/20 mx-1 hidden md:block"></div>
                     <div className="hidden md:flex">
                         <button onClick={() => setFontSize(s => Math.max(12, s - 1))} className="p-2 rounded-lg hover:bg-white/20 text-white"><Type size={14} className="scale-75"/></button>
@@ -234,7 +233,12 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                 {selectedItem.type === 'song' ? (
                    pages.length > 0 ? (
                      pages.map((pageSections, pageIndex) => (
-                        <div key={pageIndex} className={`w-full transition-all duration-300 relative shrink-0 ${paperTheme.bg} ${paperTheme.text} ${paperTheme.shadow} p-4 md:p-[20mm] rounded-sm flex flex-col ${isMobile ? 'min-h-[85vh] mb-4' : 'max-w-[210mm] h-[297mm]'}`} style={{ fontSize: `${isMobile ? fontSize + 2 : fontSize}px` }}>
+                        <div 
+                            key={pageIndex} 
+                            // AQUÍ ESTÁ EL FIX: Padding reducido en móvil (p-4) y ancho 100% (w-full)
+                            className={`w-full transition-all duration-300 relative shrink-0 ${paperTheme.bg} ${paperTheme.text} ${paperTheme.shadow} p-4 md:p-[20mm] rounded-sm flex flex-col ${isMobile ? 'min-h-[85vh] mb-4' : 'max-w-[210mm] h-[297mm]'}`} 
+                            style={{ fontSize: `${fontSize}px` }}
+                        >
                             {pageIndex === 0 ? (
                                 <div className={`mb-4 border-b-2 pb-2 flex justify-between items-end shrink-0 ${paperTheme.headerBorder}`}>
                                     <div className="max-w-[70%]">
@@ -249,8 +253,8 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
                             ) : <div className="h-4 w-full shrink-0"></div>}
 
                             <div className="flex-1 min-h-0 w-full">
-                                {/* CONTENEDOR DE TEXTO: Single Column forzado, wrap automático y break-words */}
-                                <div className="w-full font-mono whitespace-pre-wrap break-words leading-relaxed overflow-x-hidden">
+                                {/* FIX: overflow-x-auto permite scroll si la línea es EXTREMADAMENTE larga, evitando romper el layout */}
+                                <div className="w-full font-mono whitespace-pre-wrap break-words leading-relaxed overflow-x-auto max-w-full">
                                     {pageSections.map((section, idx) => (
                                         <div key={idx} className="break-inside-avoid mb-6 block w-full">
                                             {section.title && (
