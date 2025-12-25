@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Calendar, Plus, Music, Settings, LogOut, Loader2, Users, X, Save } from 'lucide-react';
+import { Calendar, Plus, Music, Settings, LogOut, Loader2, Users, X } from 'lucide-react';
 import Link from 'next/link';
 import ProfileSettings from './ProfileSettings'; 
 
@@ -94,19 +94,19 @@ export default function Dashboard() {
     );
   }
 
-  // --- AQUÍ ESTABA EL ERROR ---
+  // --- CORRECCIÓN AQUÍ ---
   if (showSettings) {
       return (
           <div className="min-h-screen bg-gray-50 p-4">
-              {/* Le pasamos userId (del perfil cargado) y la función onBack */}
+              {/* Le pasamos userId (seguro que existe porque cargó el perfil) y la función onBack */}
               <ProfileSettings 
-                userId={profile?.id || ''} 
-                onBack={() => setShowSettings(false)} 
+                  userId={profile?.id || ''} 
+                  onBack={() => setShowSettings(false)} 
               /> 
           </div>
       );
   }
-  // ----------------------------
+  // -----------------------
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-4 md:p-8 relative">
