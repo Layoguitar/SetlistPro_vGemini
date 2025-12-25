@@ -91,9 +91,9 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
 
   useEffect(() => { itemsRef.current = items; }, [items]);
 
-  // Lógica de Auto-Scroll (CORREGIDA)
+  // Lógica de Auto-Scroll
   useEffect(() => {
-    let animationFrameId = 0; // CORRECCIÓN 1: Inicializamos en 0
+    let animationFrameId = 0;
 
     const scroll = () => {
         if (scrollContainerRef.current && isScrolling) {
@@ -116,8 +116,6 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
     if (isScrolling) {
         animationFrameId = requestAnimationFrame(scroll);
     } 
-    // CORRECCIÓN 2: Quitamos el 'else { cancelAnimationFrame }' que daba error.
-    // La limpieza se hace automáticamente en el return de abajo.
 
     return () => {
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
@@ -348,7 +346,8 @@ export default function LiveSetlist({ setlistId, onBack }: LiveSetlistProps) {
          {selectedItem ? (
             <div 
                 ref={scrollContainerRef}
-                className={`flex-1 overflow-y-auto scroll-smooth ${selectedItem.type === 'song' ? 'p-2 md:p-8' : 'p-0'} flex flex-col items-center gap-4 md:gap-6`}
+                // FIX CRÍTICO: Eliminada la clase "scroll-smooth" que bloqueaba el auto-scroll en iOS
+                className={`flex-1 overflow-y-auto ${selectedItem.type === 'song' ? 'p-2 md:p-8' : 'p-0'} flex flex-col items-center gap-4 md:gap-6`}
             >
                 {selectedItem.type === 'song' ? (
                    pages.length > 0 ? (
