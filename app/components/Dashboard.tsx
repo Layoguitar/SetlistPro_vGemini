@@ -1,187 +1,180 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { Settings, Plus, Calendar, Clock, Music, ArrowRight, Loader2, MapPin } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import ProfileSettings from './ProfileSettings';
+import { Calendar, Plus, Music, Settings, LogOut, Loader2, Users } from 'lucide-react';
+import Link from 'next/link';
 
-export default function Dashboard({ onCreateNew, onEditSetlist, onGoLive }: any) {
-  const [profile, setProfile] = useState<any>(null);
-  const [setlists, setSetlists] = useState<any[]>([]);
+// Tipos básicos para evitar errores
+type Setlist = { id: string, name: string, date: string, items_count?: number };
+
+export default function Dashboard() {
   const [loading, setLoading] = useState(true);
-  const [showSettings, setShowSettings] = useState(false);
+  const [profile, setProfile] = useState<any>(null);
+  const [org, setOrg] = useState<any>(null);
+  const [setlists, setSetlists] = useState<Setlist[]>([]);
 
-  // Estadísticas
-  const [stats, setStats] = useState({ next: 0, month: 0, total: 0 });
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
 
-  const loadData = async () => {
+  const loadDashboardData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-      // 1. Cargar Perfil y Org
-      const { data: userProfile } = await supabase
-        .from('profiles')
-        .select('*, organizations(invite_code, name)')
-        .eq('id', user.id)
-        .single();
-      
-      setProfile(userProfile);
+        // 1. Cargar Perfil
+        const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        setProfile(profileData);
 
-      if (userProfile?.organization_id) {
-        // 2. Cargar Setlists de la Organización
-        const { data: lists } = await supabase
-            .from('setlists')
-            .select('*, setlist_items(count)') 
-            .eq('organization_id', userProfile.organization_id)
-            .order('scheduled_date', { ascending: true }); // Los más próximos primero
+        // 2. Cargar Organización (Banda)
+        const { data: memberData } = await supabase
+            .from('organization_members')
+            .select('role, organizations(id, name, owner_id)')
+            .eq('user_id', user.id)
+            .single();
         
-        if (lists) {
-            // Filtrar eventos futuros vs pasados
-            const now = new Date();
-            const future = lists.filter(l => new Date(l.scheduled_date) >= new Date(now.setHours(0,0,0,0)));
-            setSetlists(future);
-
-            // Calcular Estadísticas
-            setStats({
-                next: future.length > 0 ? 1 : 0, // Hay un próximo?
-                month: future.length, // Total activos
-                total: lists.length // Histórico
-            });
+        if (memberData && memberData.organizations) {
+            setOrg({ ...memberData.organizations, role: memberData.role }); // Guardamos rol y datos de la banda
+            
+            // 3. Cargar Setlists de esa banda
+            // Nota: organizations es un array o objeto según la query, aquí asumimos objeto simple por el .single()
+            const orgId = (memberData.organizations as any).id;
+            const { data: setlistsData } = await supabase
+                .from('setlists')
+                .select('*')
+                .eq('organization_id', orgId)
+                .order('date', { ascending: true });
+                
+            setSetlists(setlistsData || []);
         }
-      }
+
     } catch (error) {
-      console.error("Error cargando dashboard:", error);
+        console.error("Error cargando dashboard:", error);
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
   };
 
-  useEffect(() => { loadData(); }, []);
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.reload(); // Recargar para que 'page.tsx' nos mande al Login
+  };
 
-  if (showSettings) {
-    return <ProfileSettings userId={profile?.id} onBack={() => { setShowSettings(false); loadData(); }} />;
+  if (loading) {
+    return (
+        <div className="h-screen w-full flex items-center justify-center bg-gray-50">
+            <Loader2 className="animate-spin text-blue-600" size={32} />
+        </div>
+    );
   }
 
-  if (loading) return <div className="flex justify-center h-screen items-center"><Loader2 className="animate-spin text-gray-400" /></div>;
-
   return (
-    // CORRECCIÓN MÓVIL: Contenedor con altura dinámica y scroll propio
-    <div className="h-[100dvh] w-full overflow-y-auto bg-gray-50">
-      
-      <div className="max-w-5xl mx-auto pt-6 px-4 space-y-8 pb-32">
-        
-        {/* HEADER + BOTONES */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-          <div>
+    <div className="min-h-screen bg-gray-50 text-gray-900 p-4 md:p-8">
+      {/* HEADER */}
+      <header className="flex justify-between items-start mb-8">
+        <div>
             <h1 className="text-3xl font-bold text-gray-900">
-              Hola, {profile?.full_name?.split(' ')[0] || 'Músico'} 👋
+                Hola, {profile?.full_name?.split(' ')[0] || 'Músico'} 👋
             </h1>
-            <p className="text-gray-500 mt-1 font-medium text-sm">
-              {profile?.organizations?.name || 'Tu Banda'} • <span className="text-indigo-600 font-bold uppercase text-xs">{profile?.role === 'admin' ? 'Director' : 'Músico'}</span>
+            <p className="text-sm text-gray-500 font-medium mt-1 flex items-center gap-2">
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs uppercase font-bold tracking-wider">
+                    {org?.name || 'Sin Banda'}
+                </span>
+                • {org?.role === 'admin' ? 'LÍDER' : 'MÚSICO'}
             </p>
-          </div>
-          
-          <div className="flex gap-3 w-full md:w-auto">
-              <button 
-                onClick={() => setShowSettings(true)} 
-                className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-white border border-gray-200 px-4 py-2.5 rounded-xl shadow-sm hover:bg-gray-50 text-gray-700 font-bold text-sm transition-all"
-              >
-                <Settings size={18} /> Ajustes
-              </button>
-              
-              {profile?.role === 'admin' && (
-                <button 
-                    onClick={onCreateNew} 
-                    className="flex-1 md:flex-none bg-gray-900 hover:bg-black text-white px-5 py-2.5 rounded-xl font-bold flex justify-center items-center gap-2 shadow-lg transition-transform active:scale-95 text-sm"
-                >
-                    <Plus size={18} /> Nuevo Evento
-                </button>
-              )}
-          </div>
         </div>
 
-        {/* TARJETAS DE ESTADÍSTICAS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          
-          {/* Próximo Evento */}
-          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between h-32">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Próximo Evento</p>
-              <div className="text-3xl font-bold text-gray-900 truncate">
-                  {setlists[0] ? new Date(setlists[0].scheduled_date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' }) : '-'}
-              </div>
-              <p className="text-xs text-gray-400 truncate">{setlists[0]?.name || 'Sin programar'}</p>
-          </div>
-
-          {/* Activos */}
-          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between h-32">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Activos</p>
-              <div className="text-3xl font-bold text-blue-600">{stats.month}</div>
-              <p className="text-xs text-gray-400">Eventos futuros</p>
-          </div>
-
-          {/* Código Equipo */}
-          <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-6 rounded-2xl text-white shadow-lg flex flex-col justify-between h-32 relative overflow-hidden group">
-               <div className="relative z-10">
-                  <p className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Código Equipo</p>
-                  <div 
-                      onClick={() => {navigator.clipboard.writeText(profile?.organizations?.invite_code); alert("Copiado")}}
-                      className="text-2xl font-mono font-bold mt-1 cursor-pointer hover:opacity-80 flex items-center gap-2"
-                  >
-                      {profile?.organizations?.invite_code || '---'}
-                  </div>
-               </div>
-               <Music className="absolute -bottom-4 -right-4 text-white opacity-10 group-hover:scale-110 transition-transform duration-500" size={80} />
-          </div>
+        <div className="flex items-center gap-2">
+            {/* Botón Ajustes (Solo visual por ahora) */}
+            <button className="p-2 bg-white border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors flex items-center gap-2 shadow-sm">
+                <Settings size={18} />
+                <span className="hidden md:inline text-sm font-bold">Ajustes</span>
+            </button>
+            
+            {/* BOTÓN CERRAR SESIÓN (NUEVO) */}
+            <button 
+                onClick={handleLogout}
+                className="p-2 bg-red-50 border border-red-200 rounded-xl text-red-600 hover:bg-red-100 transition-colors shadow-sm"
+                title="Cerrar Sesión"
+            >
+                <LogOut size={18} />
+            </button>
         </div>
+      </header>
 
-        {/* LISTA DE EVENTOS */}
-        <div className="space-y-4">
-          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <Calendar size={20} className="text-gray-400"/> Agenda
-          </h2>
-          
-          {setlists.length === 0 ? (
-            <div className="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-gray-100">
-              <p className="text-gray-400 font-medium">No hay eventos próximos.</p>
-              {profile?.role === 'admin' && <p className="text-sm text-blue-600 mt-2 cursor-pointer hover:underline" onClick={onCreateNew}>Crea el primero ahora</p>}
-            </div>
-          ) : (
-            <div className="grid gap-3 pb-10"> 
-              {setlists.map((setlist) => (
-                <div 
-                  key={setlist.id} 
-                  onClick={() => profile?.role === 'admin' ? onEditSetlist(setlist.id) : onGoLive(setlist.id)} 
-                  className="group bg-white p-4 md:p-5 rounded-2xl border border-gray-100 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer flex items-center justify-between active:scale-[0.98]"
-                >
-                  <div className="flex items-center gap-4 md:gap-5 overflow-hidden">
-                    {/* Fecha Badge */}
-                    <div className="shrink-0 flex flex-col items-center justify-center w-14 h-14 bg-blue-50 text-blue-700 rounded-xl border border-blue-100">
-                      <span className="text-[10px] font-bold uppercase">{new Date(setlist.scheduled_date).toLocaleDateString('es-ES', { month: 'short' })}</span>
-                      <span className="text-xl font-bold leading-none">{new Date(setlist.scheduled_date).getDate()}</span>
-                    </div>
-                    
-                    <div className="min-w-0">
-                      <h3 className="font-bold text-base md:text-lg text-gray-900 group-hover:text-blue-600 transition-colors truncate">
-                        {setlist.name}
-                      </h3>
-                      <div className="flex items-center gap-2 md:gap-3 text-xs md:text-sm text-gray-500 mt-1">
-                        <span className="flex items-center gap-1 shrink-0"><Clock size={12} /> {new Date(setlist.scheduled_date).toLocaleTimeString('es-ES', {hour: '2-digit', minute:'2-digit'})}</span>
-                        <span className="text-gray-300">•</span>
-                        <span className="flex items-center gap-1 font-medium text-gray-600 truncate">{setlist.setlist_items[0]?.count || 0} canciones</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-gray-300 group-hover:text-blue-500 transition-transform group-hover:translate-x-1 pl-2">
-                    <ArrowRight size={20} />
-                  </div>
+      {/* TARJETAS PRINCIPALES */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        
+        {/* Tarjeta Próximo Evento */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Próximo Evento</h3>
+            {setlists.length > 0 ? (
+                <div>
+                    <div className="text-2xl font-bold truncate">{setlists[0].name}</div>
+                    <div className="text-sm text-gray-500 mt-1">{setlists[0].date || 'Sin fecha'}</div>
                 </div>
-              ))}
-            </div>
-          )}
+            ) : (
+                <div className="text-2xl font-bold text-gray-300">-</div>
+            )}
         </div>
+
+        {/* Tarjeta Estadísticas */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Activos</h3>
+            <div className="text-4xl font-bold text-blue-600">{setlists.length}</div>
+            <div className="text-sm text-gray-400">Eventos futuros</div>
+        </div>
+
+        {/* Tarjeta CÓDIGO DE EQUIPO (Solo Admin) */}
+        {org?.role === 'admin' ? (
+             <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden group cursor-pointer hover:scale-[1.02] transition-transform">
+                <Music className="absolute -bottom-4 -right-4 text-white/10 w-32 h-32" />
+                <h3 className="text-xs font-bold text-blue-200 uppercase tracking-widest mb-4">Código Equipo</h3>
+                <div className="text-3xl font-mono font-bold tracking-wider select-all">{org?.id.slice(0,8)}...</div>
+                <div className="text-xs text-blue-200 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Haz clic para copiar ID completo</div>
+             </div>
+        ) : (
+             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                 <Users className="text-gray-300 mb-2" size={32}/>
+                 <p className="text-sm text-gray-400">Eres miembro del equipo</p>
+             </div>
+        )}
       </div>
+
+      {/* LISTA DE EVENTOS (AGENDA) */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold flex items-center gap-2">
+                <Calendar size={20} className="text-gray-400"/> Agenda
+            </h2>
+            {org?.role === 'admin' && (
+                <button className="bg-black text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 hover:bg-gray-800 transition-colors">
+                    <Plus size={16} /> Nuevo
+                </button>
+            )}
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[200px]">
+            {setlists.length > 0 ? (
+                <div className="divide-y divide-gray-100">
+                    {setlists.map(setlist => (
+                        <Link key={setlist.id} href={`/setlist/${setlist.id}`} className="block p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group">
+                            <div>
+                                <div className="font-bold text-gray-900">{setlist.name}</div>
+                                <div className="text-xs text-gray-500">{setlist.date || 'Fecha pendiente'}</div>
+                            </div>
+                            <div className="text-gray-400 group-hover:text-blue-600">Ver →</div>
+                        </Link>
+                    ))}
+                </div>
+            ) : (
+                <div className="flex flex-col items-center justify-center h-48 text-gray-400">
+                    <p>No hay eventos próximos.</p>
+                </div>
+            )}
+        </div>
+      </section>
     </div>
   );
 }
