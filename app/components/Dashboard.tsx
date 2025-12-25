@@ -4,7 +4,6 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Calendar, Plus, Music, Settings, LogOut, Loader2, Users, X, Save } from 'lucide-react';
 import Link from 'next/link';
-// Importamos el componente de Perfil que ya tienes en tu proyecto
 import ProfileSettings from './ProfileSettings'; 
 
 type Setlist = { id: string, name: string, date: string, items_count?: number };
@@ -63,7 +62,6 @@ export default function Dashboard() {
     window.location.reload();
   };
 
-  // --- FUNCIÓN PARA CREAR SETLIST ---
   const handleCreateSetlist = async () => {
     if (!newSetlistName.trim() || !org?.id) return;
     setCreating(true);
@@ -71,13 +69,12 @@ export default function Dashboard() {
     try {
         const { data, error } = await supabase.from('setlists').insert([{
             name: newSetlistName,
-            date: new Date().toISOString().split('T')[0], // Fecha de hoy
-            organization_id: org.id // <--- AQUÍ ESTÁ LA CLAVE 🔑
+            date: new Date().toISOString().split('T')[0], 
+            organization_id: org.id 
         }]).select().single();
 
         if (error) throw error;
 
-        // Recargamos la lista y cerramos el modal
         setSetlists([...setlists, data]);
         setShowNewSetlistModal(false);
         setNewSetlistName('');
@@ -97,23 +94,23 @@ export default function Dashboard() {
     );
   }
 
-  // SI ESTAMOS EN MODO AJUSTES, MOSTRAMOS EL PERFIL
+  // --- AQUÍ ESTABA EL ERROR ---
   if (showSettings) {
       return (
           <div className="min-h-screen bg-gray-50 p-4">
-              <button onClick={() => setShowSettings(false)} className="mb-4 flex items-center gap-2 text-gray-500 hover:text-black">
-                  <X size={20} /> Volver al Dashboard
-              </button>
-              {/* Renderizamos tu componente de Perfil */}
-              <ProfileSettings /> 
+              {/* Le pasamos userId (del perfil cargado) y la función onBack */}
+              <ProfileSettings 
+                userId={profile?.id || ''} 
+                onBack={() => setShowSettings(false)} 
+              /> 
           </div>
       );
   }
+  // ----------------------------
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-4 md:p-8 relative">
       
-      {/* MODAL PARA NUEVO SETLIST */}
       {showNewSetlistModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
               <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
@@ -140,7 +137,6 @@ export default function Dashboard() {
           </div>
       )}
 
-      {/* HEADER */}
       <header className="flex justify-between items-start mb-8">
         <div>
             <h1 className="text-3xl font-bold text-gray-900">
@@ -155,7 +151,6 @@ export default function Dashboard() {
         </div>
 
         <div className="flex items-center gap-2">
-            {/* BOTÓN AJUSTES (AHORA FUNCIONA) */}
             <button 
                 onClick={() => setShowSettings(true)}
                 className="p-2 bg-white border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors flex items-center gap-2 shadow-sm"
@@ -174,7 +169,6 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* TARJETAS PRINCIPALES */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Próximo Evento</h3>
@@ -208,14 +202,12 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* AGENDA */}
       <section>
         <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold flex items-center gap-2">
                 <Calendar size={20} className="text-gray-400"/> Agenda
             </h2>
             {org?.role === 'admin' && (
-                // BOTÓN NUEVO (AHORA FUNCIONA)
                 <button 
                     onClick={() => setShowNewSetlistModal(true)}
                     className="bg-black text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 hover:bg-gray-800 transition-colors"
