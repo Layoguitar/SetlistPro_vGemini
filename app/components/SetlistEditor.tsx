@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+// AQUI ESTABA EL ERROR: Faltaba importar 'Music' y 'MoreVertical' y 'Edit2'
 import { GripVertical, Plus, Search, Loader2, Save, ArrowLeft, Trash2, Calendar, Clock, MoreVertical, Edit2, Music } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import type { SetlistItem, Song } from '@/types/database';
@@ -37,7 +38,7 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
       const { data: setlist } = await supabase.from('setlists').select('*').eq('id', setlistId).single();
       if (setlist) {
         setEventName(setlist.name);
-        setEventDate(setlist.scheduled_date); // Ya viene como YYYY-MM-DD
+        setEventDate(setlist.scheduled_date); 
       }
 
       const { data: itemsData } = await supabase
@@ -194,14 +195,13 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
   return (
     <div className="w-full max-w-6xl mx-auto flex flex-col h-screen bg-gray-50 overflow-hidden">
       
-      {/* HEADER MINIMALISTA (Tipo Notion/Google Docs) */}
+      {/* HEADER MINIMALISTA */}
       <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0 z-20">
         <div className="flex items-center gap-4 flex-1">
             <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors">
                 <ArrowLeft size={20} />
             </button>
             <div className="flex flex-col">
-                {/* Input de Título que parece texto */}
                 <input 
                     value={eventName}
                     onChange={(e) => setEventName(e.target.value)}
@@ -235,13 +235,12 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
         </div>
       </div>
 
-      {/* ÁREA DE TRABAJO (2 Columnas) */}
+      {/* ÁREA DE TRABAJO */}
       <div className="flex-1 flex overflow-hidden">
           
-          {/* COLUMNA IZQUIERDA: CONSTRUCTOR (Scroll independiente) */}
+          {/* COLUMNA IZQUIERDA */}
           <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
             
-            {/* Buscador Integrado */}
             <div className="bg-white p-2 rounded-xl border border-gray-200 shadow-sm sticky top-0 z-10 mx-auto max-w-3xl">
                 <div className="relative">
                     <Search className="absolute left-3 top-3 text-gray-400" size={20} />
@@ -253,7 +252,6 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
                     onFocus={() => setShowDropdown(true)}
                     />
                     
-                    {/* Resultados Flotantes */}
                     {showDropdown && (songsToDisplay.length > 0 || searchTerm.length > 0) && (
                         <>
                             <div className="fixed inset-0 z-[5]" onClick={() => setShowDropdown(false)}></div>
@@ -274,7 +272,6 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
                         </>
                     )}
                 </div>
-                {/* Bloques Rápidos (Horizontal) */}
                 <div className="flex gap-2 mt-2 overflow-x-auto pb-1 no-scrollbar">
                     {['Bienvenida', 'Oración', 'Predica', 'Cena', 'Ministración'].map(label => (
                     <button key={label} onClick={() => addBlock(label)} 
@@ -336,7 +333,7 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
             </div>
           </div>
 
-          {/* COLUMNA DERECHA: TEAM (Fija, oculta en móvil) */}
+          {/* COLUMNA DERECHA */}
           <div className="hidden lg:block w-80 bg-white border-l border-gray-200 p-6 overflow-y-auto">
              {setlistId ? (
                 <TeamManager setlistId={setlistId} />
