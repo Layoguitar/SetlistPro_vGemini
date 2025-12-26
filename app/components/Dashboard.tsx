@@ -4,10 +4,10 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Calendar, Plus, Music, Settings, LogOut, Loader2, Users, LayoutDashboard, Library, Menu, X } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // Necesario para redirigir
 import ProfileSettings from './ProfileSettings'; 
 import SongLibrary from './SongLibrary';
 
-// ACTUALIZACIÓN: Usamos scheduled_date en lugar de date
 type Setlist = { id: string, name: string, scheduled_date: string, items_count?: number };
 
 export default function Dashboard() {
@@ -16,15 +16,13 @@ export default function Dashboard() {
   const [org, setOrg] = useState<any>(null);
   const [setlists, setSetlists] = useState<Setlist[]>([]);
   
-  // NAVEGACIÓN (Solo para Admin)
   const [activeTab, setActiveTab] = useState<'events' | 'songs' | 'team'>('events');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // MODALES
   const [showSettings, setShowSettings] = useState(false);
-  const [showNewSetlistModal, setShowNewSetlistModal] = useState(false);
-  const [newSetlistName, setNewSetlistName] = useState('');
+  
+  // Eliminamos el estado del Modal, ya no lo necesitamos
   const [creating, setCreating] = useState(false);
+  const router = useRouter(); // Para la redirección automática
 
   useEffect(() => {
     loadDashboardData();
@@ -48,12 +46,11 @@ export default function Dashboard() {
             setOrg({ ...memberData.organizations, role: memberData.role });
             const orgId = (memberData.organizations as any).id;
             
-            // ACTUALIZACIÓN: Ordenamos por scheduled_date
             const { data: setlistsData } = await supabase
                 .from('setlists')
                 .select('*')
                 .eq('organization_id', orgId)
-                .order('scheduled_date', { ascending: true });
+                .order('scheduled_date', { ascending: true }); // Usamos scheduled_date
                 
             setSetlists(setlistsData || []);
         }
@@ -69,23 +66,32 @@ export default function Dashboard() {
     window.location.reload();
   };
 
+  // --- CREACIÓN DIRECTA (SIN MODAL) ---
   const handleCreateSetlist = async () => {
-    if (!newSetlistName.trim() || !org?.id) return;
+    if (!org?.id) return;
     setCreating(true);
 
     try {
-        // ACTUALIZACIÓN: Guardamos en scheduled_date
+        // Nombre automático basado en la fecha
+        const today = new Date();
+        const defaultName = `Evento ${today.getDate()}/${today.getMonth() + 1}`;
+        const defaultDate = today.toISOString().split('T')[0];
+
         const { data, error } = await supabase.from('setlists').insert([{
-            name: newSetlistName,
-            scheduled_date: new Date().toISOString().split('T')[0], 
+            name: defaultName,
+            scheduled_date: defaultDate, 
             organization_id: org.id 
         }]).select().single();
+
         if (error) throw error;
-        setSetlists([...setlists, data]);
-        setShowNewSetlistModal(false);
-        setNewSetlistName('');
-    } catch (err) { alert("Error creando evento"); } 
-    finally { setCreating(false); }
+
+        // ¡REDIRECCIÓN INMEDIATA AL EDITOR! 🚀
+        router.push(`/setlist/${data.id}`);
+
+    } catch (err) {
+        alert("Error creando evento automático");
+        setCreating(false);
+    } 
   };
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-600" size={32}/></div>;
@@ -112,7 +118,6 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Próximo Evento</h3>
-                    {/* ACTUALIZACIÓN: Mostrar scheduled_date */}
                     <div className="text-2xl font-bold truncate">{setlists[0]?.name || '-'}</div>
                     <div className="text-sm text-gray-500 mt-1">
                         {setlists[0]?.scheduled_date ? new Date(setlists[0].scheduled_date).toLocaleDateString() : 'Sin fecha'}
@@ -133,7 +138,6 @@ export default function Dashboard() {
                                 <Link key={setlist.id} href={`/setlist/${setlist.id}`} className="block p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group">
                                     <div>
                                         <div className="font-bold text-gray-900">{setlist.name}</div>
-                                        {/* ACTUALIZACIÓN: Mostrar scheduled_date */}
                                         <div className="text-xs text-gray-500">{new Date(setlist.scheduled_date).toLocaleDateString()}</div>
                                     </div>
                                     <div className="text-gray-400 group-hover:text-blue-600">Ver →</div>
@@ -187,7 +191,15 @@ export default function Dashboard() {
                 <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <header className="flex justify-between items-end mb-8">
                         <div><h2 className="text-2xl font-bold">Próximos Eventos</h2><p className="text-gray-500">Panel de Control de Líder</p></div>
-                        <button onClick={() => setShowNewSetlistModal(true)} className="bg-black text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-gray-800 transition-all shadow-lg"><Plus size={18} /> Nuevo Evento</button>
+                        {/* BOTÓN DE CREACIÓN DIRECTA */}
+                        <button 
+                            onClick={handleCreateSetlist} 
+                            disabled={creating}
+                            className="bg-black text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-gray-800 transition-all shadow-lg disabled:opacity-50"
+                        >
+                            {creating ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />} 
+                            Nuevo Evento
+                        </button>
                     </header>
                     
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
@@ -203,7 +215,6 @@ export default function Dashboard() {
                             <Link key={setlist.id} href={`/setlist/${setlist.id}`} className="bg-white p-5 rounded-xl border border-gray-100 hover:border-blue-300 hover:shadow-md transition-all group flex items-center justify-between">
                                 <div className="flex items-center gap-4">
                                     <div className="bg-blue-50 text-blue-600 w-12 h-12 rounded-lg flex flex-col items-center justify-center leading-none border border-blue-100">
-                                        {/* ACTUALIZACIÓN: Fechas corregidas */}
                                         <span className="text-xs font-bold uppercase">{new Date(setlist.scheduled_date).toLocaleString('es-ES', { month: 'short' })}</span>
                                         <span className="text-lg font-black">{new Date(setlist.scheduled_date).getDate() || '?'}</span>
                                     </div>
@@ -234,18 +245,7 @@ export default function Dashboard() {
         </div>
       </main>
 
-      {showNewSetlistModal && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-              <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
-                  <h3 className="text-lg font-bold mb-4">Nuevo Evento</h3>
-                  <input className="w-full border p-3 rounded-xl mb-4 focus:border-blue-500 outline-none" placeholder="Nombre" value={newSetlistName} onChange={e => setNewSetlistName(e.target.value)} autoFocus />
-                  <div className="flex justify-end gap-2">
-                      <button onClick={() => setShowNewSetlistModal(false)} className="px-4 py-2 text-gray-500 font-bold text-sm">Cancelar</button>
-                      <button onClick={handleCreateSetlist} disabled={creating || !newSetlistName.trim()} className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 disabled:opacity-50">{creating && <Loader2 className="animate-spin" size={14} />} Crear</button>
-                  </div>
-              </div>
-          </div>
-      )}
+      {/* YA NO HAY MODAL AQUÍ */}
     </div>
   );
 }
