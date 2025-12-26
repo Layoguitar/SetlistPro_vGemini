@@ -7,7 +7,8 @@ import Link from 'next/link';
 import ProfileSettings from './ProfileSettings'; 
 import SongLibrary from './SongLibrary';
 
-type Setlist = { id: string, name: string, date: string, items_count?: number };
+// ACTUALIZACIÓN: Usamos scheduled_date en lugar de date
+type Setlist = { id: string, name: string, scheduled_date: string, items_count?: number };
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
@@ -47,11 +48,12 @@ export default function Dashboard() {
             setOrg({ ...memberData.organizations, role: memberData.role });
             const orgId = (memberData.organizations as any).id;
             
+            // ACTUALIZACIÓN: Ordenamos por scheduled_date
             const { data: setlistsData } = await supabase
                 .from('setlists')
                 .select('*')
                 .eq('organization_id', orgId)
-                .order('date', { ascending: true });
+                .order('scheduled_date', { ascending: true });
                 
             setSetlists(setlistsData || []);
         }
@@ -72,9 +74,10 @@ export default function Dashboard() {
     setCreating(true);
 
     try {
+        // ACTUALIZACIÓN: Guardamos en scheduled_date
         const { data, error } = await supabase.from('setlists').insert([{
             name: newSetlistName,
-            date: new Date().toISOString().split('T')[0], 
+            scheduled_date: new Date().toISOString().split('T')[0], 
             organization_id: org.id 
         }]).select().single();
         if (error) throw error;
@@ -89,9 +92,7 @@ export default function Dashboard() {
 
   if (showSettings) return <div className="min-h-screen bg-gray-50 p-4"><ProfileSettings userId={profile?.id} onBack={() => setShowSettings(false)} /></div>;
 
-  // ==========================================================
-  // VISTA 1: MÚSICO (SIMPLE - LA QUE TE GUSTABA) 🎸
-  // ==========================================================
+  // --- VISTA MÚSICO ---
   if (org?.role === 'member') {
     return (
         <div className="min-h-screen bg-gray-50 text-gray-900 p-4 md:p-8 relative">
@@ -111,8 +112,11 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Próximo Evento</h3>
+                    {/* ACTUALIZACIÓN: Mostrar scheduled_date */}
                     <div className="text-2xl font-bold truncate">{setlists[0]?.name || '-'}</div>
-                    <div className="text-sm text-gray-500 mt-1">{setlists[0]?.date || 'Sin fecha'}</div>
+                    <div className="text-sm text-gray-500 mt-1">
+                        {setlists[0]?.scheduled_date ? new Date(setlists[0].scheduled_date).toLocaleDateString() : 'Sin fecha'}
+                    </div>
                 </div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
                     <Users className="text-gray-300 mb-2" size={32}/>
@@ -129,7 +133,8 @@ export default function Dashboard() {
                                 <Link key={setlist.id} href={`/setlist/${setlist.id}`} className="block p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group">
                                     <div>
                                         <div className="font-bold text-gray-900">{setlist.name}</div>
-                                        <div className="text-xs text-gray-500">{setlist.date}</div>
+                                        {/* ACTUALIZACIÓN: Mostrar scheduled_date */}
+                                        <div className="text-xs text-gray-500">{new Date(setlist.scheduled_date).toLocaleDateString()}</div>
                                     </div>
                                     <div className="text-gray-400 group-hover:text-blue-600">Ver →</div>
                                 </Link>
@@ -142,12 +147,9 @@ export default function Dashboard() {
     );
   }
 
-  // ==========================================================
-  // VISTA 2: LÍDER / ADMIN (CON SIDEBAR Y HERRAMIENTAS) 👑
-  // ==========================================================
+  // --- VISTA LÍDER ---
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900 overflow-hidden">
-      {/* SIDEBAR */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 md:relative md:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 border-b border-gray-100 flex justify-between items-center">
             <h1 className="font-black text-xl tracking-tight text-blue-600">SETLIST<span className="text-gray-900">PRO</span></h1>
@@ -173,7 +175,6 @@ export default function Dashboard() {
         </div>
       </aside>
 
-      {/* ÁREA PRINCIPAL ADMIN */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         <div className="md:hidden p-4 border-b bg-white flex items-center justify-between shrink-0">
             <button onClick={() => setMobileMenuOpen(true)} className="p-2"><Menu /></button>
@@ -202,10 +203,14 @@ export default function Dashboard() {
                             <Link key={setlist.id} href={`/setlist/${setlist.id}`} className="bg-white p-5 rounded-xl border border-gray-100 hover:border-blue-300 hover:shadow-md transition-all group flex items-center justify-between">
                                 <div className="flex items-center gap-4">
                                     <div className="bg-blue-50 text-blue-600 w-12 h-12 rounded-lg flex flex-col items-center justify-center leading-none border border-blue-100">
-                                        <span className="text-xs font-bold uppercase">{new Date(setlist.date).toLocaleString('es-ES', { month: 'short' })}</span>
-                                        <span className="text-lg font-black">{new Date(setlist.date).getDate() || '?'}</span>
+                                        {/* ACTUALIZACIÓN: Fechas corregidas */}
+                                        <span className="text-xs font-bold uppercase">{new Date(setlist.scheduled_date).toLocaleString('es-ES', { month: 'short' })}</span>
+                                        <span className="text-lg font-black">{new Date(setlist.scheduled_date).getDate() || '?'}</span>
                                     </div>
-                                    <div><h3 className="font-bold text-lg text-gray-900 group-hover:text-blue-600 transition-colors">{setlist.name}</h3><p className="text-sm text-gray-500">{new Date(setlist.date).toLocaleDateString()}</p></div>
+                                    <div>
+                                        <h3 className="font-bold text-lg text-gray-900 group-hover:text-blue-600 transition-colors">{setlist.name}</h3>
+                                        <p className="text-sm text-gray-500">{new Date(setlist.scheduled_date).toLocaleDateString()}</p>
+                                    </div>
                                 </div>
                                 <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 group-hover:bg-blue-600 group-hover:text-white transition-all">→</div>
                             </Link>
