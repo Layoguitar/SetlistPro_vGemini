@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Music, Edit3, Save, ArrowLeft, Loader2 } from 'lucide-react';
+import { Search, Plus, Music, Edit3, Save, ArrowLeft, Loader2, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 
-// Definimos el tipo aquí para evitar errores si falta el archivo de tipos
-interface Song {
+// Definición de tipos
+export interface Song {
   id: string;
   title: string;
   artist: string;
@@ -17,7 +17,7 @@ interface Song {
 }
 
 interface SongLibraryProps {
-  orgId?: string; // Lo recibimos opcionalmente desde el Dashboard
+  orgId: string; // Hacemos obligatorio el ID para garantizar seguridad
 }
 
 export default function SongLibrary({ orgId }: SongLibraryProps) {
@@ -28,46 +28,23 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
   const [editingSong, setEditingSong] = useState<Song | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Cargar canciones al inicio
+  // CARGAR CANCIONES (Solo una vez al entrar)
   useEffect(() => {
-    fetchSongs();
-  }, [orgId]); // Recargar si cambia la org
+    if (orgId) fetchSongs();
+  }, [orgId]);
 
   const fetchSongs = async () => {
     setLoading(true);
-    
     try {
-        // 1. Si no nos pasaron el orgId por props, lo buscamos manual
-        let currentOrgId = orgId;
+        // 🔒 SEGURIDAD: Filtramos directamente por el orgId recibido
+        const { data, error } = await supabase
+            .from('songs')
+            .select('*')
+            .eq('organization_id', orgId)
+            .order('title', { ascending: true });
         
-        if (!currentOrgId) {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                // CORRECCIÓN: Buscamos en organization_members, no en profiles
-                const { data: member } = await supabase
-                    .from('organization_members')
-                    .select('organization_id')
-                    .eq('user_id', user.id)
-                    .single();
-                
-                currentOrgId = member?.organization_id;
-            }
-        }
-
-        if (currentOrgId) {
-            let query = supabase
-                .from('songs')
-                .select('*')
-                .eq('organization_id', currentOrgId)
-                .order('title', { ascending: true });
-            
-            if (searchTerm) {
-                query = query.ilike('title', `%${searchTerm}%`);
-            }
-
-            const { data } = await query;
-            if (data) setSongs(data as any);
-        }
+        if (error) throw error;
+        setSongs(data || []);
     } catch (error) {
         console.error("Error cargando canciones:", error);
     } finally {
@@ -75,10 +52,11 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
     }
   };
 
-  useEffect(() => {
-    const timer = setTimeout(fetchSongs, 300);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
+  // 🔍 BÚSQUEDA LOCAL (Instantánea)
+  const filteredSongs = songs.filter(song => 
+    song.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    song.artist.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,34 +64,22 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
     setIsSaving(true);
 
     try {
-      // 1. Obtener Org ID seguro
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
-      
-      // CORRECCIÓN: Buscamos la org correctamente
-      const { data: member } = await supabase
-          .from('organization_members')
-          .select('organization_id')
-          .eq('user_id', user.id)
-          .single();
-          
-      if (!member?.organization_id) throw new Error("No tienes organización.");
-
-      // 2. Guardar (Insertar o Actualizar)
       if (editingSong.id === 'new') {
-        // CREAR NUEVA
-        const { error } = await supabase.from('songs').insert([{
+        // CREAR
+        const { data, error } = await supabase.from('songs').insert([{
             title: editingSong.title,
             artist: editingSong.artist,
             bpm: editingSong.bpm,
             default_key: editingSong.default_key,
             content: editingSong.content,
-            organization_id: member.organization_id, // Usamos el ID corregido
+            organization_id: orgId, // Usamos el ID seguro
             duration_seconds: 300
-        }]);
+        }]).select().single();
+        
         if (error) throw error;
+        setSongs([data, ...songs]); // Actualizamos la lista localmente
       } else {
-        // ACTUALIZAR EXISTENTE
+        // ACTUALIZAR
         const { error } = await supabase
           .from('songs')
           .update({
@@ -124,15 +90,14 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
             content: editingSong.content
           })
           .eq('id', editingSong.id);
+
         if (error) throw error;
+        // Actualizamos la lista localmente sin recargar todo
+        setSongs(songs.map(s => s.id === editingSong.id ? editingSong : s));
       }
 
-      // Éxito
       setEditingSong(null);
-      fetchSongs(); // Recargar lista
-
     } catch (error: any) {
-      console.error(error);
       alert("Error: " + error.message);
     } finally {
       setIsSaving(false);
@@ -143,7 +108,7 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
     if (!confirm("¿Seguro que quieres borrar esta canción?")) return;
     const { error } = await supabase.from('songs').delete().eq('id', id);
     if (!error) {
-      fetchSongs();
+      setSongs(songs.filter(s => s.id !== id));
       if (editingSong?.id === id) setEditingSong(null);
     } else {
         alert("Error al borrar");
@@ -181,50 +146,27 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
         </div>
 
         <form onSubmit={handleSave} className="bg-white p-8 rounded-xl border border-gray-200 shadow-sm space-y-6">
-          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Título</label>
-              <input 
-                required
-                className={inputBaseClass}
-                value={editingSong.title}
-                onChange={e => setEditingSong({...editingSong, title: e.target.value})}
-                placeholder="Ej. Alza tus ojos"
-              />
+              <input required className={inputBaseClass} value={editingSong.title} onChange={e => setEditingSong({...editingSong, title: e.target.value})} placeholder="Ej. Alza tus ojos" />
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Artista</label>
-              <input 
-                className={inputBaseClass}
-                value={editingSong.artist || ''}
-                onChange={e => setEditingSong({...editingSong, artist: e.target.value})}
-                placeholder="Ej. Marco Barrientos"
-              />
+              <input className={inputBaseClass} value={editingSong.artist || ''} onChange={e => setEditingSong({...editingSong, artist: e.target.value})} placeholder="Ej. Marco Barrientos" />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Tono Original</label>
-              <select 
-                className={inputBaseClass}
-                value={editingSong.default_key || 'C'}
-                onChange={e => setEditingSong({...editingSong, default_key: e.target.value})}
-              >
-                 {['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'].map(k => (
-                  <option key={k} value={k}>{k}</option>
-                ))}
+              <select className={inputBaseClass} value={editingSong.default_key || 'C'} onChange={e => setEditingSong({...editingSong, default_key: e.target.value})}>
+                 {['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'].map(k => (<option key={k} value={k}>{k}</option>))}
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-2">BPM</label>
-              <input 
-                type="number"
-                className={inputBaseClass}
-                value={editingSong.bpm}
-                onChange={e => setEditingSong({...editingSong, bpm: parseInt(e.target.value) || 0})}
-              />
+              <input type="number" className={inputBaseClass} value={editingSong.bpm} onChange={e => setEditingSong({...editingSong, bpm: parseInt(e.target.value) || 0})} />
             </div>
           </div>
 
@@ -244,29 +186,13 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
 
           <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
              {editingSong.id !== 'new' && (
-                <button 
-                  type="button"
-                  onClick={() => handleDelete(editingSong.id)}
-                  className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg font-medium transition-colors mr-auto"
-                >
-                  Eliminar Canción
+                <button type="button" onClick={() => handleDelete(editingSong.id)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg font-medium transition-colors mr-auto flex items-center gap-2">
+                  <Trash2 size={18}/> Eliminar
                 </button>
              )}
-
-             <button 
-               type="button"
-               onClick={() => setEditingSong(null)}
-               className="px-6 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors"
-             >
-               Cancelar
-             </button>
-             <button 
-               type="submit"
-               disabled={isSaving}
-               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm disabled:opacity-50"
-             >
-               {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-               Guardar Cambios
+             <button type="button" onClick={() => setEditingSong(null)} className="px-6 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">Cancelar</button>
+             <button type="submit" disabled={isSaving} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm disabled:opacity-50">
+               {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} Guardar Cambios
              </button>
           </div>
         </form>
@@ -277,59 +203,50 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
   // --- VISTA LISTA ---
   return (
     <div className="max-w-5xl mx-auto space-y-6 h-full flex flex-col">
-       
        <div className="flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
           <h1 className="text-2xl font-bold text-gray-900">Biblioteca de Canciones</h1>
-          <button 
-            onClick={handleNewSong}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm"
-          >
+          <button onClick={handleNewSong} className="bg-black hover:bg-gray-800 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg transition-all">
             <Plus size={20} /> Nueva Canción
           </button>
        </div>
 
-       {/* Buscador */}
        <div className="relative shrink-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
           <input 
             type="text" 
-            placeholder="Buscar por título..."
+            placeholder="Buscar por título o artista..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 placeholder:text-gray-400 shadow-sm transition-all"
           />
        </div>
 
-       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex-1 flex flex-col">
+       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex-1 flex flex-col min-h-[400px]">
           {loading ? (
-             <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-gray-400"/></div>
-          ) : songs.length === 0 ? (
-             <div className="p-10 text-center text-gray-400">No se encontraron canciones en tu organización.</div>
+             <div className="flex-1 flex justify-center items-center"><Loader2 className="animate-spin text-gray-400" size={32}/></div>
+          ) : filteredSongs.length === 0 ? (
+             <div className="flex-1 flex flex-col justify-center items-center text-gray-400 p-10">
+                <Music size={48} className="mb-4 opacity-20"/>
+                <p>No se encontraron canciones.</p>
+             </div>
           ) : (
              <div className="overflow-y-auto flex-1">
                  <div className="divide-y divide-gray-100">
-                    {songs.map(song => (
-                    <div 
-                        key={song.id} 
-                        onClick={() => setEditingSong(song)}
-                        className="p-4 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-                    >
+                    {filteredSongs.map(song => (
+                    <div key={song.id} onClick={() => setEditingSong(song)} className="p-4 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors">
                         <div className="flex items-center gap-4">
-                            <div className="bg-blue-50 text-blue-600 p-2 rounded-lg">
-                                <Music size={20} />
-                            </div>
+                            <div className="bg-blue-50 text-blue-600 p-3 rounded-xl"><Music size={20} /></div>
                             <div>
                                 <div className="font-bold text-gray-900">{song.title}</div>
                                 <div className="text-xs text-gray-500">{song.artist}</div>
                             </div>
                         </div>
-                        
                         <div className="flex items-center gap-6">
                             <div className="hidden sm:flex flex-col items-end">
-                                <span className="text-xs font-bold bg-gray-100 px-2 py-0.5 rounded text-gray-600">{song.default_key}</span>
+                                <span className="text-xs font-bold bg-gray-100 px-2 py-0.5 rounded text-gray-600 border border-gray-200">{song.default_key}</span>
                                 <span className="text-[10px] text-gray-400 mt-1">{song.bpm} bpm</span>
                             </div>
-                            <Edit3 size={18} className="text-gray-300 group-hover:text-blue-500" />
+                            <Edit3 size={18} className="text-gray-300 group-hover:text-blue-500 transition-colors" />
                         </div>
                     </div>
                     ))}

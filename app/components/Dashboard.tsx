@@ -2,11 +2,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Calendar, Plus, Music, Settings, LogOut, Loader2, Users, LayoutDashboard, Library, Menu, X } from 'lucide-react';
+import { Calendar, Plus, Music, Settings, LogOut, Loader2, Users, LayoutDashboard, Library, Menu, X, History, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ProfileSettings from './ProfileSettings'; 
 import SongLibrary from './SongLibrary';
+import Statistics from './Statistics'; // IMPORTANTE: Importar el componente
 
 type Setlist = { id: string, name: string, scheduled_date: string, items_count?: number };
 
@@ -16,17 +17,18 @@ export default function Dashboard() {
   const [org, setOrg] = useState<any>(null);
   const [setlists, setSetlists] = useState<Setlist[]>([]);
   
-  const [activeTab, setActiveTab] = useState<'events' | 'songs' | 'team'>('events');
+  // TABS: events, songs, team, stats
+  const [activeTab, setActiveTab] = useState<'events' | 'songs' | 'team' | 'stats'>('events');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   
-  // SIN MODAL
   const [creating, setCreating] = useState(false);
   const router = useRouter(); 
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [showHistory]);
 
   const loadDashboardData = async () => {
     try {
@@ -46,12 +48,19 @@ export default function Dashboard() {
             setOrg({ ...memberData.organizations, role: memberData.role });
             const orgId = (memberData.organizations as any).id;
             
-            const { data: setlistsData } = await supabase
-                .from('setlists')
-                .select('*')
-                .eq('organization_id', orgId)
-                .order('scheduled_date', { ascending: true });
-                
+            const today = new Date();
+            today.setDate(today.getDate() - 2); 
+            const cutoffDate = today.toISOString().split('T')[0];
+
+            let query = supabase.from('setlists').select('*').eq('organization_id', orgId);
+
+            if (showHistory) {
+                query = query.lt('scheduled_date', cutoffDate).order('scheduled_date', { ascending: false });
+            } else {
+                query = query.gte('scheduled_date', cutoffDate).order('scheduled_date', { ascending: true });
+            }
+            
+            const { data: setlistsData } = await query;
             setSetlists(setlistsData || []);
         }
     } catch (error) {
@@ -66,7 +75,6 @@ export default function Dashboard() {
     window.location.reload();
   };
 
-  // CREACIÓN DIRECTA
   const handleCreateSetlist = async () => {
     if (!org?.id) return;
     setCreating(true);
@@ -91,10 +99,9 @@ export default function Dashboard() {
   };
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-600" size={32}/></div>;
-
   if (showSettings) return <div className="min-h-screen bg-gray-50 p-4"><ProfileSettings userId={profile?.id} onBack={() => setShowSettings(false)} /></div>;
 
-  // VISTA DE MÚSICO
+  // --- VISTA MÚSICO ---
   if (org?.role === 'member') {
     return (
         <div className="min-h-screen bg-gray-50 text-gray-900 p-4 md:p-8 relative">
@@ -114,14 +121,8 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Próximo Evento</h3>
-                    <div className="text-2xl font-bold truncate">{setlists[0]?.name || '-'}</div>
-                    <div className="text-sm text-gray-500 mt-1">
-                        {setlists[0]?.scheduled_date ? new Date(setlists[0].scheduled_date).toLocaleDateString() : 'Sin fecha'}
-                    </div>
-                </div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                    <Users className="text-gray-300 mb-2" size={32}/>
-                    <p className="text-sm text-gray-400">Eres parte del equipo</p>
+                    <div className="text-2xl font-bold truncate">{setlists[0]?.name || 'Nada pendiente'}</div>
+                    <div className="text-sm text-gray-500 mt-1">{setlists[0]?.scheduled_date ? new Date(setlists[0].scheduled_date).toLocaleDateString() : '-'}</div>
                 </div>
             </div>
 
@@ -140,14 +141,14 @@ export default function Dashboard() {
                                 </Link>
                             ))}
                         </div>
-                    ) : <div className="flex items-center justify-center h-48 text-gray-400">No hay eventos próximos.</div>}
+                    ) : <div className="flex items-center justify-center h-48 text-gray-400">Todo limpio.</div>}
                 </div>
             </section>
         </div>
     );
   }
 
-  // VISTA DE LÍDER
+  // --- VISTA LÍDER ---
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900 overflow-hidden">
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 md:relative md:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -159,6 +160,9 @@ export default function Dashboard() {
             <button onClick={() => { setActiveTab('events'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-colors ${activeTab === 'events' ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}><LayoutDashboard size={20} /> Eventos</button>
             <button onClick={() => { setActiveTab('songs'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-colors ${activeTab === 'songs' ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}><Library size={20} /> Repertorio</button>
             <button onClick={() => { setActiveTab('team'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-colors ${activeTab === 'team' ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}><Users size={20} /> Equipo</button>
+            
+            {/* AQUÍ ESTÁ EL BOTÓN */}
+            <button onClick={() => { setActiveTab('stats'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-colors ${activeTab === 'stats' ? 'bg-purple-50 text-purple-600' : 'text-gray-500 hover:bg-gray-50'}`}><BarChart3 size={20} /> Estadísticas</button>
         </div>
         <div className="absolute bottom-0 w-full p-4 border-t border-gray-100">
             <div className="flex items-center gap-3 mb-4 px-2">
@@ -186,41 +190,46 @@ export default function Dashboard() {
             {activeTab === 'events' && (
                 <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <header className="flex justify-between items-end mb-8">
-                        <div><h2 className="text-2xl font-bold">Próximos Eventos</h2><p className="text-gray-500">Panel de Control de Líder</p></div>
-                        <button 
-                            onClick={handleCreateSetlist} 
-                            disabled={creating}
-                            className="bg-black text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-gray-800 transition-all shadow-lg disabled:opacity-50"
-                        >
-                            {creating ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />} 
-                            Nuevo Evento
-                        </button>
+                        <div>
+                            <h2 className="text-2xl font-bold">{showHistory ? 'Historial de Eventos' : 'Próximos Eventos'}</h2>
+                            <p className="text-gray-500">{showHistory ? 'Eventos pasados (hace más de 2 días)' : 'Ordenados por proximidad'}</p>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={() => setShowHistory(!showHistory)} className={`px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all ${showHistory ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                                <History size={18} /> {showHistory ? 'Ver Próximos' : 'Historial'}
+                            </button>
+                            {!showHistory && (
+                                <button onClick={handleCreateSetlist} disabled={creating} className="bg-black text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-gray-800 transition-all shadow-lg disabled:opacity-50">
+                                    {creating ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />} Nuevo Evento
+                                </button>
+                            )}
+                        </div>
                     </header>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm"><div className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Total Eventos</div><div className="text-3xl font-black text-gray-900">{setlists.length}</div></div>
-                        <div className="md:col-span-2 bg-gradient-to-r from-blue-600 to-indigo-600 p-5 rounded-2xl shadow-lg text-white flex items-center justify-between">
-                            <div><div className="text-blue-200 text-xs font-bold uppercase tracking-wider mb-1">Código de Invitación</div><div className="text-2xl font-mono font-bold tracking-widest select-all">{org?.id.slice(0,8)}...</div></div>
-                            <div className="bg-white/20 p-2 rounded-lg"><Users size={24}/></div>
+                    {!showHistory && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm"><div className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Pendientes</div><div className="text-3xl font-black text-gray-900">{setlists.length}</div></div>
+                            <div className="md:col-span-2 bg-gradient-to-r from-blue-600 to-indigo-600 p-5 rounded-2xl shadow-lg text-white flex items-center justify-between">
+                                <div><div className="text-blue-200 text-xs font-bold uppercase tracking-wider mb-1">Código de Invitación</div><div className="text-2xl font-mono font-bold tracking-widest select-all">{org?.id.slice(0,8)}...</div></div>
+                                <div className="bg-white/20 p-2 rounded-lg"><Users size={24}/></div>
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <div className="grid gap-3">
                         {setlists.map(setlist => (
                             <Link key={setlist.id} href={`/setlist/${setlist.id}`} className="bg-white p-5 rounded-xl border border-gray-100 hover:border-blue-300 hover:shadow-md transition-all group flex items-center justify-between">
                                 <div className="flex items-center gap-4">
-                                    <div className="bg-blue-50 text-blue-600 w-12 h-12 rounded-lg flex flex-col items-center justify-center leading-none border border-blue-100">
+                                    <div className={`w-12 h-12 rounded-lg flex flex-col items-center justify-center leading-none border ${showHistory ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
                                         <span className="text-xs font-bold uppercase">{new Date(setlist.scheduled_date).toLocaleString('es-ES', { month: 'short' })}</span>
                                         <span className="text-lg font-black">{new Date(setlist.scheduled_date).getDate() || '?'}</span>
                                     </div>
-                                    <div>
-                                        <h3 className="font-bold text-lg text-gray-900 group-hover:text-blue-600 transition-colors">{setlist.name}</h3>
-                                        <p className="text-sm text-gray-500">{new Date(setlist.scheduled_date).toLocaleDateString()}</p>
-                                    </div>
+                                    <div><h3 className="font-bold text-lg text-gray-900 group-hover:text-blue-600 transition-colors">{setlist.name}</h3><p className="text-sm text-gray-500">{new Date(setlist.scheduled_date).toLocaleDateString()}</p></div>
                                 </div>
                                 <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 group-hover:bg-blue-600 group-hover:text-white transition-all">→</div>
                             </Link>
                         ))}
+                        {setlists.length === 0 && <div className="text-center py-12 text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200"><Calendar size={48} className="mx-auto mb-3 opacity-20"/><p>{showHistory ? 'No hay eventos en el historial.' : 'No hay eventos próximos.'}</p></div>}
                     </div>
                 </div>
             )}
@@ -237,6 +246,9 @@ export default function Dashboard() {
                     </div>
                 </div>
             )}
+
+            {activeTab === 'stats' && <div className="h-full"><Statistics orgId={org?.id} /></div>}
+
         </div>
       </main>
     </div>
