@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { GripVertical, Plus, Search, Loader2, Save, ArrowLeft, Trash2, Calendar, Clock, MoreVertical, Edit2 } from 'lucide-react';
+import { GripVertical, Plus, Search, Loader2, Save, ArrowLeft, Trash2, Calendar, Clock, MoreVertical, Edit2, Music } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import type { SetlistItem, Song } from '@/types/database';
 import NewSongModal from './NewSongModal';

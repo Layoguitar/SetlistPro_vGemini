@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Calendar, Plus, Music, Settings, LogOut, Loader2, Users, LayoutDashboard, Library, Menu, X } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation'; // Necesario para redirigir
+import { useRouter } from 'next/navigation';
 import ProfileSettings from './ProfileSettings'; 
 import SongLibrary from './SongLibrary';
 
@@ -20,9 +20,9 @@ export default function Dashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   
-  // Eliminamos el estado del Modal, ya no lo necesitamos
+  // SIN MODAL
   const [creating, setCreating] = useState(false);
-  const router = useRouter(); // Para la redirección automática
+  const router = useRouter(); 
 
   useEffect(() => {
     loadDashboardData();
@@ -50,7 +50,7 @@ export default function Dashboard() {
                 .from('setlists')
                 .select('*')
                 .eq('organization_id', orgId)
-                .order('scheduled_date', { ascending: true }); // Usamos scheduled_date
+                .order('scheduled_date', { ascending: true });
                 
             setSetlists(setlistsData || []);
         }
@@ -66,13 +66,12 @@ export default function Dashboard() {
     window.location.reload();
   };
 
-  // --- CREACIÓN DIRECTA (SIN MODAL) ---
+  // CREACIÓN DIRECTA
   const handleCreateSetlist = async () => {
     if (!org?.id) return;
     setCreating(true);
 
     try {
-        // Nombre automático basado en la fecha
         const today = new Date();
         const defaultName = `Evento ${today.getDate()}/${today.getMonth() + 1}`;
         const defaultDate = today.toISOString().split('T')[0];
@@ -84,12 +83,9 @@ export default function Dashboard() {
         }]).select().single();
 
         if (error) throw error;
-
-        // ¡REDIRECCIÓN INMEDIATA AL EDITOR! 🚀
         router.push(`/setlist/${data.id}`);
 
     } catch (err) {
-        alert("Error creando evento automático");
         setCreating(false);
     } 
   };
@@ -98,7 +94,7 @@ export default function Dashboard() {
 
   if (showSettings) return <div className="min-h-screen bg-gray-50 p-4"><ProfileSettings userId={profile?.id} onBack={() => setShowSettings(false)} /></div>;
 
-  // --- VISTA MÚSICO ---
+  // VISTA DE MÚSICO
   if (org?.role === 'member') {
     return (
         <div className="min-h-screen bg-gray-50 text-gray-900 p-4 md:p-8 relative">
@@ -151,7 +147,7 @@ export default function Dashboard() {
     );
   }
 
-  // --- VISTA LÍDER ---
+  // VISTA DE LÍDER
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900 overflow-hidden">
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 md:relative md:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -191,7 +187,6 @@ export default function Dashboard() {
                 <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <header className="flex justify-between items-end mb-8">
                         <div><h2 className="text-2xl font-bold">Próximos Eventos</h2><p className="text-gray-500">Panel de Control de Líder</p></div>
-                        {/* BOTÓN DE CREACIÓN DIRECTA */}
                         <button 
                             onClick={handleCreateSetlist} 
                             disabled={creating}
@@ -244,8 +239,6 @@ export default function Dashboard() {
             )}
         </div>
       </main>
-
-      {/* YA NO HAY MODAL AQUÍ */}
     </div>
   );
 }
