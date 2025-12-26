@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-// AQUI ESTABA EL ERROR: Faltaba importar 'Music' y 'MoreVertical' y 'Edit2'
+// CORRECCIÓN: Agregué 'Music' a esta lista para eliminar el error rojo
 import { GripVertical, Plus, Search, Loader2, Save, ArrowLeft, Trash2, Calendar, Clock, MoreVertical, Edit2, Music } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import type { SetlistItem, Song } from '@/types/database';
@@ -177,7 +177,7 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
         if (itemsError) throw itemsError;
       }
 
-      alert("¡Guardado exitosamente!");
+      // alert("¡Guardado exitosamente!"); // Quitamos el alert para que sea más fluido
       onBack();
     } catch (error: any) {
       console.error(error);
@@ -237,10 +237,8 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
 
       {/* ÁREA DE TRABAJO */}
       <div className="flex-1 flex overflow-hidden">
-          
           {/* COLUMNA IZQUIERDA */}
           <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
-            
             <div className="bg-white p-2 rounded-xl border border-gray-200 shadow-sm sticky top-0 z-10 mx-auto max-w-3xl">
                 <div className="relative">
                     <Search className="absolute left-3 top-3 text-gray-400" size={20} />
@@ -251,7 +249,6 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
                     onChange={e => setSearchTerm(e.target.value)}
                     onFocus={() => setShowDropdown(true)}
                     />
-                    
                     {showDropdown && (songsToDisplay.length > 0 || searchTerm.length > 0) && (
                         <>
                             <div className="fixed inset-0 z-[5]" onClick={() => setShowDropdown(false)}></div>
@@ -296,7 +293,6 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
                                 >
                                 <div {...provided.dragHandleProps} className="text-gray-300 cursor-grab px-1 hover:text-gray-500"><GripVertical size={20} /></div>
                                 <span className="font-mono text-gray-300 font-bold w-6 text-center text-lg">{index + 1}</span>
-                                
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-3">
                                         <p className="font-bold text-gray-900 text-lg truncate">{item.title_override || item.song?.title}</p>
@@ -312,7 +308,6 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
                                         </div>
                                     )}
                                 </div>
-                                
                                 <button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="opacity-0 group-hover:opacity-100 p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={18}/></button>
                                 </div>
                             )}
@@ -332,7 +327,6 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
                 </DragDropContext>
             </div>
           </div>
-
           {/* COLUMNA DERECHA */}
           <div className="hidden lg:block w-80 bg-white border-l border-gray-200 p-6 overflow-y-auto">
              {setlistId ? (
@@ -344,7 +338,6 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
              )}
           </div>
       </div>
-
       <NewSongModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSongCreated={addSong} />
     </div>
   );
