@@ -17,14 +17,14 @@ export default function Home() {
   const [showLogin, setShowLogin] = useState(false);
 
   useEffect(() => {
-    // Verificar sesión al cargar
+    // 1. Verificar sesión al cargar
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) checkUserOrg(session.user.id);
       else setLoading(false);
     });
 
-    // Escuchar cambios de sesión (Login/Logout)
+    // 2. Escuchar cambios de sesión (Login/Logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) {
@@ -32,7 +32,7 @@ export default function Home() {
       } else {
         setLoading(false);
         setHasOrg(null);
-        setShowLogin(false); // Si cierra sesión, volver a la Landing
+        setShowLogin(false); // Al cerrar sesión, volvemos a la Landing
       }
     });
 
@@ -68,31 +68,42 @@ export default function Home() {
     );
   }
 
-  // 1. USUARIO LOGUEADO
+  // A. SI EL USUARIO YA INICIÓ SESIÓN
   if (session) {
-    // AQUÍ ESTÁ EL ARREGLO: Agregamos onComplete
     if (hasOrg === false) return <Onboarding onComplete={() => window.location.reload()} />;
     if (hasOrg === true) return <Dashboard />;
     return <div className="bg-black h-screen"></div>;
   }
 
-  // 2. USUARIO NO LOGUEADO (Visitante)
+  // B. SI EL USUARIO NO HA INICIADO SESIÓN (VISITANTE)
   
-  // Si hizo clic en "Iniciar Sesión", mostramos el formulario
+  // Caso 1: Hizo clic en "Iniciar Sesión" -> Mostramos el Login con FONDO OSCURO
   if (showLogin) {
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 relative">
+        <div className="min-h-screen bg-[#030303] flex flex-col items-center justify-center p-4 relative overflow-hidden">
+             
+             {/* FONDO ANIMADO (El mismo de la Landing para consistencia) */}
+             <div className="absolute inset-0 z-0 pointer-events-none">
+                <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+                <div className="absolute inset-0 bg-[radial-gradient(circle_800px_at_50%_200px,#030303_0%,transparent_100%)]"></div>
+             </div>
+
+             {/* Botón Volver */}
              <button 
                 onClick={() => setShowLogin(false)} 
-                className="absolute top-6 left-6 text-sm font-bold text-gray-500 hover:text-black flex items-center gap-2 transition-colors"
+                className="absolute top-6 left-6 text-sm font-bold text-gray-500 hover:text-white flex items-center gap-2 transition-colors z-20"
              >
                 ← Volver al inicio
              </button>
-             <Auth />
+             
+             {/* Formulario Auth centrado */}
+             <div className="relative z-10 w-full flex justify-center">
+                <Auth />
+             </div>
         </div>
     );
   }
 
-  // Por defecto: Mostramos la LANDING PAGE
+  // Caso 2: Por defecto -> Mostramos la LANDING PAGE
   return <LandingPage onLoginClick={() => setShowLogin(true)} />;
 }

@@ -2,128 +2,109 @@
 
 import React, { useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2 } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight, Sparkles } from 'lucide-react';
 
 export default function Auth() {
   const [loading, setLoading] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
-  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false); // Alternar entre Login y Registro
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
     try {
       if (isSignUp) {
-        // REGISTRO
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: { full_name: fullName } // Esto se manda al Trigger SQL
-          }
-        });
+        const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        // Si desactivaste la confirmación de email, esto no es necesario,
-        // pero es buen mensaje por si acaso.
-        alert("¡Cuenta creada! Si no entras automáticamente, inicia sesión.");
+        alert('¡Registro exitoso! Revisa tu correo para confirmar.');
       } else {
-        // LOGIN
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password
-        });
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        // El redireccionamiento lo maneja page.tsx automáticamente
       }
     } catch (error: any) {
-      console.error("Error de autenticación:", error.message);
-      alert("Error: " + error.message);
+      alert(error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Clase base para los inputs (ahora con texto oscuro)
-  const inputClassName = "w-full px-4 py-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 font-medium placeholder:text-gray-400 bg-white";
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 space-y-8 border border-gray-100">
+    <div className="w-full max-w-md animate-in fade-in zoom-in duration-500">
+      
+      {/* TARJETA PRINCIPAL ESTILO VIDRIO */}
+      <div className="bg-[#0A0A0A]/80 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl relative overflow-hidden">
         
-        <div className="text-center">
-          <div className="bg-black w-14 h-14 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-sm">
-            <span className="text-white font-bold text-lg">SP</span>
+        {/* Luces decorativas superiores */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-1 bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-50"></div>
+        <div className="absolute top-[-50px] left-1/2 -translate-x-1/2 w-40 h-40 bg-indigo-500/20 blur-[80px] rounded-full"></div>
+
+        <div className="text-center mb-8 relative z-10">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 mb-4 shadow-lg shadow-indigo-500/20">
+             <Sparkles className="text-white" size={20} />
           </div>
-          <h1 className="text-3xl font-extrabold text-gray-900">Bienvenido a SetlistPro</h1>
-          <p className="text-gray-500 mt-2">
-            {isSignUp ? "Crea tu cuenta de músico gratis" : "Inicia sesión para ver tus eventos"}
+          <h2 className="text-2xl font-bold text-white tracking-tight">
+            {isSignUp ? 'Crea tu cuenta' : 'Bienvenido de nuevo'}
+          </h2>
+          <p className="text-gray-400 text-sm mt-2">
+            {isSignUp ? 'Únete para gestionar tu banda.' : 'Ingresa tus credenciales para continuar.'}
           </p>
         </div>
 
-        <form onSubmit={handleAuth} className="space-y-5">
+        <form onSubmit={handleAuth} className="space-y-5 relative z-10">
           
-          {isSignUp && (
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-2 ml-1">Nombre Completo</label>
-              <input 
-                type="text" 
-                required 
-                className={inputClassName}
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Ej. Pedro Baterista"
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-gray-500 uppercase ml-1">Correo Electrónico</label>
+            <div className="relative group">
+              <Mail className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-indigo-400 transition-colors" size={18} />
+              <input
+                type="email"
+                required
+                placeholder="nombre@ejemplo.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-[#111] border border-white/10 text-white pl-12 pr-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all placeholder:text-gray-600"
               />
             </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase mb-2 ml-1">Correo Electrónico</label>
-            <input 
-              type="email" 
-              required 
-              className={inputClassName}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="tu@email.com"
-            />
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase mb-2 ml-1">Contraseña</label>
-            <input 
-              type="password" 
-              required 
-              className={inputClassName}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••"
-              minLength={6}
-            />
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-gray-500 uppercase ml-1">Contraseña</label>
+            <div className="relative group">
+              <Lock className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-indigo-400 transition-colors" size={18} />
+              <input
+                type="password"
+                required
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-[#111] border border-white/10 text-white pl-12 pr-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all placeholder:text-gray-600"
+              />
+            </div>
           </div>
 
-          <button 
+          <button
+            type="submit"
             disabled={loading}
-            className="w-full bg-black text-white py-3.5 rounded-lg font-bold text-lg hover:bg-gray-800 transition-all transform hover:scale-[1.01] active:scale-[0.99] flex justify-center shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
+            className="w-full bg-white text-black font-bold py-3.5 rounded-xl hover:bg-gray-200 transition-all flex items-center justify-center gap-2 mt-2"
           >
-            {loading ? <Loader2 className="animate-spin" size={24} /> : (isSignUp ? "Registrarse" : "Entrar")}
+            {loading ? <Loader2 className="animate-spin" size={20} /> : (
+                <>
+                  {isSignUp ? 'Registrarse Gratis' : 'Iniciar Sesión'} <ArrowRight size={18} />
+                </>
+            )}
           </button>
         </form>
 
-        <div className="text-center text-sm pt-2">
+        <div className="mt-8 text-center">
           <button 
-            onClick={() => {
-              setIsSignUp(!isSignUp);
-              setEmail(''); setPassword(''); setFullName(''); // Limpiar formulario al cambiar
-            }}
-            className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-sm text-gray-500 hover:text-white transition-colors"
           >
-            {isSignUp ? "¿Ya tienes cuenta? Inicia sesión" : "¿No tienes cuenta? Regístrate gratis"}
+            {isSignUp ? '¿Ya tienes cuenta? Inicia Sesión' : '¿No tienes cuenta? Regístrate gratis'}
           </button>
         </div>
-
       </div>
     </div>
   );
