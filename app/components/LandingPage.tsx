@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { Music, Zap, BarChart3, ArrowDownCircle, ArrowRight, Play, Check, X } from 'lucide-react';
+import { Music, Zap, BarChart3, ArrowDownCircle, ArrowRight, Play, Check, X, Settings, ChevronLeft, ChevronRight, Mic2, ListMusic } from 'lucide-react';
 
 interface LandingPageProps {
   onLoginClick: () => void;
@@ -68,22 +68,135 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
           </button>
         </div>
 
-        {/* 3D APP PREVIEW (CON TU IMAGEN) */}
+        {/* 3D APP MOCKUP (CONSTRUIDO CON CÓDIGO) */}
         <div className="mt-20 w-full max-w-5xl relative group perspective-1000 animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-500">
+            {/* Glow de fondo */}
             <div className="absolute inset-0 bg-gradient-to-t from-indigo-600/20 to-purple-600/20 blur-[60px] rounded-[40px] -z-10 group-hover:opacity-100 transition-opacity duration-700 opacity-50"></div>
             
-            <div className="relative bg-[#0A0A0A] border border-white/10 rounded-xl p-2 shadow-2xl overflow-hidden transform transition-transform duration-700 group-hover:rotate-x-2">
-                {/* AQUI VA TU IMAGEN REAL. 
-                   Asegúrate de guardar tu imagen como 'hero-image.jpg' en la carpeta 'public'.
-                */}
-                <img 
-                    src="/hero-image.jpg" 
-                    alt="SetlistPro Dashboard" 
-                    className="w-full rounded-lg shadow-inner border border-white/5"
-                />
+            {/* Contenedor Principal de la App */}
+            <div className="relative bg-[#0F0F10] border border-white/10 rounded-xl shadow-2xl overflow-hidden transform transition-transform duration-700 group-hover:rotate-x-2 aspect-[16/10] flex flex-col">
                 
-                {/* Reflejo de vidrio sobre la imagen */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none rounded-lg"></div>
+                {/* 1. Header de la App Mockup */}
+                <div className="h-12 border-b border-white/5 bg-[#141415] flex items-center px-4 justify-between shrink-0">
+                    <div className="flex gap-2">
+                        <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
+                        <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                        <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs font-mono text-gray-400">
+                        <span className="flex items-center gap-1"><Music size={12}/> Repertorio</span>
+                        <span className="flex items-center gap-1 text-white"><Play size={10} fill="currentColor"/> En Vivo</span>
+                        <span className="flex items-center gap-1"><Settings size={12}/> Config</span>
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-indigo-600/20 flex items-center justify-center text-indigo-400 font-bold text-xs">EM</div>
+                </div>
+
+                {/* 2. Cuerpo de la App Mockup */}
+                <div className="flex flex-1 overflow-hidden text-left">
+                    
+                    {/* Sidebar Izquierda (Setlist) */}
+                    <div className="w-64 bg-[#111] border-r border-white/5 flex flex-col">
+                        <div className="p-4 border-b border-white/5">
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Setlist Actual</h3>
+                            <div className="text-white font-bold text-sm">Domingo Mañana</div>
+                        </div>
+                        <div className="flex-1 p-2 space-y-1">
+                            {/* Item Activo */}
+                            <div className="p-3 bg-indigo-600/10 border border-indigo-600/20 rounded-lg flex justify-between items-center group cursor-pointer">
+                                <div>
+                                    <div className="text-white font-medium text-sm">Way Maker</div>
+                                    <div className="text-indigo-300 text-[10px] font-mono mt-0.5">TONO: G • 68 BPM</div>
+                                </div>
+                                <div className="h-2 w-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse"></div>
+                            </div>
+                            {/* Items Inactivos */}
+                            <div className="p-3 hover:bg-white/5 rounded-lg flex justify-between items-center opacity-60">
+                                <div>
+                                    <div className="text-white font-medium text-sm">La Bondad de Dios</div>
+                                    <div className="text-gray-500 text-[10px] font-mono mt-0.5">TONO: A • 72 BPM</div>
+                                </div>
+                            </div>
+                            <div className="p-3 hover:bg-white/5 rounded-lg flex justify-between items-center opacity-60">
+                                <div>
+                                    <div className="text-white font-medium text-sm">Tumbas a Jardines</div>
+                                    <div className="text-gray-500 text-[10px] font-mono mt-0.5">TONO: B • 140 BPM</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Área Principal (Acordes) */}
+                    <div className="flex-1 bg-[#050505] p-8 relative flex flex-col items-center">
+                        
+                        {/* Controles Flotantes */}
+                        <div className="absolute top-6 right-6 flex gap-2">
+                             <div className="px-3 py-1 bg-white/10 rounded-md text-xs font-mono text-gray-300 border border-white/5">Transponer: -2</div>
+                             <div className="px-3 py-1 bg-indigo-600 text-white rounded-md text-xs font-bold shadow-lg shadow-indigo-500/20 flex items-center gap-1"><Play size={10} fill="white"/> AutoScroll</div>
+                        </div>
+
+                        {/* Hoja de Acordes */}
+                        <div className="max-w-xl w-full space-y-8 mt-4 opacity-90">
+                            {/* Título Canción */}
+                            <div className="text-center mb-8 border-b border-white/5 pb-4">
+                                <h1 className="text-3xl font-black text-white mb-2">WAY MAKER</h1>
+                                <div className="flex justify-center gap-4 text-xs font-mono text-gray-500">
+                                    <span>SINACH</span>
+                                    <span>•</span>
+                                    <span>4/4 TIME</span>
+                                </div>
+                            </div>
+
+                            {/* Verso 1 */}
+                            <div className="font-mono text-sm space-y-1 leading-relaxed">
+                                <div className="text-xs font-bold text-gray-600 bg-gray-900 w-fit px-2 py-0.5 rounded mb-2">VERSO 1</div>
+                                <div className="relative h-12">
+                                     <span className="absolute -top-3 text-indigo-400 font-bold">G</span>
+                                     <p className="text-gray-300">Aquí estás, te vemos mover</p>
+                                </div>
+                                <div className="relative h-12">
+                                     <span className="absolute -top-3 left-0 text-indigo-400 font-bold">C</span>
+                                     <span className="absolute -top-3 right-0 text-indigo-400 font-bold">G</span>
+                                     <p className="text-gray-300">Te adoraré, te adoraré</p>
+                                </div>
+                                <div className="relative h-12">
+                                     <span className="absolute -top-3 text-indigo-400 font-bold">G</span>
+                                     <p className="text-gray-300">Aquí estás, obrando en mí</p>
+                                </div>
+                                <div className="relative h-12">
+                                     <span className="absolute -top-3 left-0 text-indigo-400 font-bold">C</span>
+                                     <span className="absolute -top-3 right-0 text-indigo-400 font-bold">G</span>
+                                     <p className="text-gray-300">Te adoraré, te adoraré</p>
+                                </div>
+                            </div>
+
+                             {/* Coro */}
+                             <div className="font-mono text-sm space-y-1 leading-relaxed">
+                                <div className="text-xs font-bold text-indigo-300 bg-indigo-900/20 w-fit px-2 py-0.5 rounded mb-2 border border-indigo-500/20">CORO</div>
+                                <div className="relative h-12">
+                                     <span className="absolute -top-3 text-indigo-400 font-bold">C</span>
+                                     <p className="text-white font-bold">Milagroso, abres camino</p>
+                                </div>
+                                <div className="relative h-12">
+                                     <span className="absolute -top-3 text-indigo-400 font-bold">G</span>
+                                     <p className="text-white font-bold">Cumples promesas</p>
+                                </div>
+                                <div className="relative h-12">
+                                     <span className="absolute -top-3 text-indigo-400 font-bold">D</span>
+                                     <p className="text-white font-bold">Luz en tinieblas</p>
+                                </div>
+                                <div className="relative h-12">
+                                     <span className="absolute -top-3 text-indigo-400 font-bold">Em</span>
+                                     <span className="absolute -top-3 right-20 text-indigo-400 font-bold">C</span>
+                                     <p className="text-white font-bold">Mi Dios, así eres tú</p>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                {/* Brillo de Vidrio sobre la App */}
+                <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none"></div>
             </div>
         </div>
       </div >
