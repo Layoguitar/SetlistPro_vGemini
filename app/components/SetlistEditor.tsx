@@ -30,20 +30,18 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
   // 1. CARGA DE DATOS
   useEffect(() => {
     const loadSetlistData = async () => {
-      fetchDefaultSongs(); // Cargar canciones sugeridas siempre
+      fetchDefaultSongs(); 
 
-      if (!setlistId) return; // Si es nuevo, paramos aquí
+      if (!setlistId) return; 
 
       setIsLoading(true);
       
-      // A) Cargar info del setlist
       const { data: setlist } = await supabase.from('setlists').select('*').eq('id', setlistId).single();
       if (setlist) {
         setEventName(setlist.name);
         setEventDate(setlist.scheduled_date.split('T')[0]);
       }
 
-      // B) Cargar los ítems
       const { data: itemsData } = await supabase
         .from('setlist_items')
         .select(`*, song:songs(*)`)
@@ -59,14 +57,19 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
   }, [setlistId]);
 
   const fetchDefaultSongs = async () => {
-    // Buscamos canciones que pertenezcan a tu organización (vía perfil)
     const { data: { user } } = await supabase.auth.getUser();
     if(user) {
-        const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single();
-        if(profile) {
+        // CORRECCIÓN: Buscamos en organization_members (no en profiles)
+        const { data: member } = await supabase
+            .from('organization_members')
+            .select('organization_id')
+            .eq('user_id', user.id)
+            .single();
+
+        if(member?.organization_id) {
             const { data } = await supabase.from('songs')
                 .select('*')
-                .eq('organization_id', profile.organization_id)
+                .eq('organization_id', member.organization_id)
                 .limit(20);
             if (data) setDefaultSongs(data);
         }
@@ -83,13 +86,17 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
       const { data: { user } } = await supabase.auth.getUser();
       if(!user) return;
       
-      // Obtener Org ID
-      const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single();
+      // CORRECCIÓN: Buscamos en organization_members
+      const { data: member } = await supabase
+          .from('organization_members')
+          .select('organization_id')
+          .eq('user_id', user.id)
+          .single();
       
-      if(profile) {
+      if(member?.organization_id) {
           const { data } = await supabase.from('songs')
             .select('*')
-            .eq('organization_id', profile.organization_id)
+            .eq('organization_id', member.organization_id)
             .ilike('title', `%${searchTerm}%`)
             .limit(10);
           if (data) setSearchResults(data);
@@ -133,27 +140,32 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
     setItems(newItems.map((item, idx) => ({ ...item, position: idx })));
   };
 
-  // --- GUARDADO (AQUÍ ESTABA EL ERROR) ---
+  // --- GUARDADO ---
   const handleSave = async () => {
     if (items.length === 0 && !confirm("¿Guardar setlist vacío?")) return;
     setIsSaving(true);
 
     try {
-      // 1. OBTENER ORG_ID DEL USUARIO ACTUAL
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No autenticado");
 
-      const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single();
-      if (!profile?.organization_id) throw new Error("No tienes organización asignada. Contacta soporte.");
+      // CORRECCIÓN FINAL: Obtener ID de la organización correctamente
+      const { data: member } = await supabase
+          .from('organization_members')
+          .select('organization_id')
+          .eq('user_id', user.id)
+          .single();
+
+      if (!member?.organization_id) throw new Error("No tienes organización asignada.");
 
       let currentSetlistId = setlistId;
 
-      // 2. CREAR O ACTUALIZAR SETLIST CON EL ORG_ID
+      // CREAR O ACTUALIZAR
       if (!currentSetlistId) {
         const { data, error } = await supabase.from('setlists').insert([{ 
           name: eventName, 
           scheduled_date: eventDate,
-          organization_id: profile.organization_id // <--- CLAVE: Asignar a la organización
+          organization_id: member.organization_id // Usamos el ID correcto
         }]).select().single();
         
         if (error) throw error;
@@ -165,7 +177,7 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
         if (error) throw error;
       }
 
-      // 3. ACTUALIZAR ÍTEMS
+      // ACTUALIZAR ÍTEMS
       await supabase.from('setlist_items').delete().eq('setlist_id', currentSetlistId);
 
       const itemsToSave = items.map((item, index) => ({
@@ -201,9 +213,9 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
   if (isLoading) return <div className="flex justify-center pt-20"><Loader2 className="animate-spin text-gray-400" /></div>;
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6 pb-20">
+    <div className="w-full max-w-5xl mx-auto space-y-6 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
-      {/* HEADER TIPO SERVICIOS */}
+      {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
         <button onClick={onBack} className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors font-medium">
           <ArrowLeft size={20} /> Volver
@@ -242,13 +254,10 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
         </div>
       </div>
 
-      {/* ÁREA DE TRABAJO */}
       <div className="flex flex-col lg:flex-row gap-8">
           
-          {/* COLUMNA IZQUIERDA: CONSTRUCTOR */}
           <div className="flex-1 space-y-4">
             
-            {/* Buscador Rápido */}
             <div className="relative">
                 <Search className="absolute left-3 top-3 text-gray-400" size={20} />
                 <input 
@@ -258,17 +267,14 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
                   onChange={e => setSearchTerm(e.target.value)}
                   onFocus={() => setShowDropdown(true)}
                 />
-                 {/* Dropdown de Resultados */}
                 {showDropdown && (songsToDisplay.length > 0 || searchTerm.length > 0) && (
                     <>
                         <div className="fixed inset-0 z-10" onClick={() => setShowDropdown(false)}></div>
                         <div className="absolute top-full left-0 w-full bg-white border border-gray-200 rounded-xl shadow-2xl mt-2 overflow-hidden z-20 max-h-80 overflow-y-auto">
-                            
                             <div className="p-2 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
                                 <span className="text-xs font-bold text-gray-400 uppercase">Resultados</span>
                                 <button onClick={() => { setIsModalOpen(true); setShowDropdown(false); }} className="text-xs font-bold text-blue-600 hover:underline">+ Crear Nueva</button>
                             </div>
-
                             {songsToDisplay.map(song => (
                                 <button key={song.id} onClick={() => addSong(song)} className="w-full text-left px-4 py-3 hover:bg-blue-50 flex justify-between border-b border-gray-50 transition-colors group">
                                     <div><span className="font-bold text-gray-900">{song.title}</span><br/><span className="text-xs text-gray-500">{song.artist}</span></div>
@@ -278,15 +284,11 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
                                     </div>
                                 </button>
                             ))}
-                            {songsToDisplay.length === 0 && (
-                                <div className="p-4 text-center text-gray-400 text-sm">No encontramos esa canción. <br/> <button onClick={() => { setIsModalOpen(true); setShowDropdown(false); }} className="text-blue-600 font-bold hover:underline">Créala ahora</button></div>
-                            )}
                         </div>
                     </>
                 )}
             </div>
             
-            {/* Bloques Rápidos */}
             <div className="flex gap-2 flex-wrap">
                 {['Bienvenida', 'Oración', 'Predica', 'Cena', 'Ministración'].map(label => (
                 <button key={label} onClick={() => addBlock(label)} 
@@ -308,7 +310,6 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
                             >
                             <div {...provided.dragHandleProps} className="text-gray-300 cursor-grab px-1 hover:text-gray-500"><GripVertical size={20} /></div>
                             <span className="font-bold text-gray-300 w-6 text-center text-lg">{index + 1}</span>
-                            
                             <div className="flex-1">
                                 <p className="font-bold text-gray-900 text-lg">{item.title_override || item.song?.title}</p>
                                 {item.type === 'song' && (
@@ -318,7 +319,6 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
                                     </div>
                                 )}
                             </div>
-                            
                             <button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                             </div>
                         )}
@@ -337,7 +337,6 @@ export default function SetlistEditor({ setlistId, onBack }: SetlistEditorProps)
             </DragDropContext>
           </div>
 
-          {/* COLUMNA DERECHA: TEAM MANAGER (Solo si hay ID) */}
           <div className="lg:w-80 space-y-4">
              {setlistId ? (
                 <TeamManager setlistId={setlistId} />
