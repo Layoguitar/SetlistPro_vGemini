@@ -1,4 +1,9 @@
 @import "tailwindcss";
+@config "../tailwind.config.js";  /* <--- EL CAMBIO: "../" significa "una carpeta atrás" */
+
+@theme {
+  --color-primary: #4f46e5;
+}
 
 :root {
   --foreground-rgb: 0, 0, 0;
@@ -6,17 +11,15 @@
   --background-end-rgb: 255, 255, 255;
 }
 
-/* Regla para quitar la barra de scroll fea en Chrome/Safari */
+/* Ocultar scrollbar */
 .scrollbar-hide::-webkit-scrollbar {
     display: none;
 }
-
 .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
 
-/* Animaciones suaves para el cambio de tema */
 body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
