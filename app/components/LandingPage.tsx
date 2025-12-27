@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { Music, Zap, BarChart3, ArrowDownCircle, ArrowRight, Play, Check, X, Settings, ChevronLeft, ChevronRight, Mic2, ListMusic } from 'lucide-react';
+import { Music, Zap, BarChart3, ArrowDownCircle, ArrowRight, Play, Check, X, Settings, Download } from 'lucide-react';
 
 interface LandingPageProps {
   onLoginClick: () => void;
@@ -18,21 +18,36 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
         <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-indigo-600/20 blur-[120px] rounded-full animate-pulse"></div>
       </div>
 
-      {/* NAVBAR */}
+      {/* NAVBAR CON BOTÓN DE INSTALAR */}
       <nav className="fixed top-0 w-full z-50 border-b border-white/5 bg-[#030303]/70 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          
+          {/* LOGO */}
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <Music size={16} className="text-white" />
             </div>
             <span className="font-bold text-lg tracking-tight">Setlist<span className="text-gray-500">Pro</span></span>
           </div>
-          <button 
-            onClick={onLoginClick}
-            className="bg-white text-black px-5 py-2 rounded-full text-xs font-bold hover:bg-gray-200 transition-all transform hover:scale-105"
-          >
-            Iniciar Sesión
-          </button>
+
+          {/* BOTONES DERECHA */}
+          <div className="flex items-center gap-4">
+            
+            {/* BOTÓN INSTALAR APP (Solo visible en pantallas medianas/grandes para no saturar móviles) */}
+            <button 
+                onClick={() => alert("📲 Para instalar la App:\n\n🍎 iPhone: Toca el botón 'Compartir' (cuadrado con flecha) y selecciona 'Agregar a Inicio'.\n\n🤖 Android: Toca el menú de tres puntos y selecciona 'Instalar aplicación' o 'Agregar a pantalla principal'.")}
+                className="hidden md:flex items-center gap-2 text-xs font-medium text-gray-400 hover:text-white transition-colors border border-white/10 px-3 py-1.5 rounded-full hover:bg-white/5"
+            >
+                <Download size={14} /> Instalar App
+            </button>
+
+            <button 
+                onClick={onLoginClick}
+                className="bg-white text-black px-5 py-2 rounded-full text-xs font-bold hover:bg-gray-200 transition-all transform hover:scale-105"
+            >
+                Iniciar Sesión
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -95,7 +110,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                 <div className="flex flex-1 overflow-hidden text-left">
                     
                     {/* Sidebar Izquierda (Setlist) */}
-                    <div className="w-64 bg-[#111] border-r border-white/5 flex flex-col">
+                    <div className="w-64 bg-[#111] border-r border-white/5 flex flex-col hidden sm:flex">
                         <div className="p-4 border-b border-white/5">
                             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Setlist Actual</h3>
                             <div className="text-white font-bold text-sm">Domingo Mañana</div>
@@ -126,7 +141,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                     </div>
 
                     {/* Área Principal (Acordes) */}
-                    <div className="flex-1 bg-[#050505] p-8 relative flex flex-col items-center">
+                    <div className="flex-1 bg-[#050505] p-4 sm:p-8 relative flex flex-col items-center overflow-y-hidden">
                         
                         {/* Controles Flotantes */}
                         <div className="absolute top-6 right-6 flex gap-2">
@@ -135,7 +150,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         </div>
 
                         {/* Hoja de Acordes */}
-                        <div className="max-w-xl w-full space-y-8 mt-4 opacity-90">
+                        <div className="max-w-xl w-full space-y-8 mt-4 opacity-90 scale-90 sm:scale-100 origin-top">
                             {/* Título Canción */}
                             <div className="text-center mb-8 border-b border-white/5 pb-4">
                                 <h1 className="text-3xl font-black text-white mb-2">WAY MAKER</h1>
