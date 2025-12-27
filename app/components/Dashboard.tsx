@@ -12,42 +12,62 @@ import {
   Plus, 
   Search, 
   Bell,
-  Menu,
-  X
+  Loader2
 } from 'lucide-react';
 
-// Importamos tus componentes existentes
+// Importamos tus componentes
 import SongLibrary from './SongLibrary';
-import TeamManager from './TeamManager';
 import ProfileSettings from './ProfileSettings';
-// Si tienes un componente de Eventos, impórtalo aquí. Si no, usaremos un placeholder.
-// import EventManager from './EventManager'; 
+// NOTA: No importamos TeamManager aquí porque ese es para eventos específicos.
+// Usaremos un placeholder para el equipo global.
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('home');
   const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [orgId, setOrgId] = useState<string | null>(null); // Nuevo: Guardamos el ID de la org
   const [greeting, setGreeting] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  // Efecto para cargar sesión y perfil
+  // Efecto para cargar sesión, perfil y organización
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const initData = async () => {
+      setLoading(true);
+      const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
-      if (session) loadProfile(session.user.id);
-    });
+      
+      if (session) {
+        // 1. Cargar Perfil
+        const { data: profileData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+        if (profileData) setProfile(profileData);
+
+        // 2. Cargar Organización (Para pasársela a SongLibrary)
+        const { data: orgData } = await supabase
+            .from('organization_members')
+            .select('organization_id')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+        
+        if (orgData) {
+            setOrgId(orgData.organization_id);
+        }
+      }
+      setLoading(false);
+    };
+
+    initData();
     
-    // Configurar saludo según la hora
+    // Configurar saludo
     const hour = new Date().getHours();
     if (hour < 12) setGreeting('Buenos días');
     else if (hour < 19) setGreeting('Buenas tardes');
     else setGreeting('Buenas noches');
 
   }, []);
-
-  const loadProfile = async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (data) setProfile(data);
-  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -58,11 +78,11 @@ export default function Dashboard() {
   const renderHome = () => (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
-      {/* HEADER DE BIENVENIDA */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
           <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
-            {greeting}, <span className="text-indigo-400">{profile?.full_name?.split(' ')[0] || 'Musico'}</span>
+            {greeting}, <span className="text-indigo-400">{profile?.full_name?.split(' ')[0] || 'Músico'}</span>
           </h1>
           <p className="text-gray-400 mt-1">Aquí tienes el resumen de tu ministerio hoy.</p>
         </div>
@@ -77,62 +97,39 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* WIDGETS DE RESUMEN (BENTO GRID) */}
+      {/* WIDGETS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
-        {/* Widget 1: Próximo Evento */}
+        {/* Próximo Evento */}
         <div className="md:col-span-2 bg-[#111] border border-white/10 p-6 rounded-3xl relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-600/10 blur-[50px] rounded-full group-hover:bg-indigo-600/20 transition-all"></div>
             <div className="relative z-10">
                 <div className="flex justify-between items-start mb-6">
                     <div>
                         <span className="text-indigo-400 font-bold text-xs uppercase tracking-wider">Próximo Servicio</span>
-                        <h3 className="text-2xl font-bold text-white mt-1">Culto Dominical AM</h3>
+                        <h3 className="text-2xl font-bold text-white mt-1">Culto Dominical</h3>
                     </div>
-                    <div className="px-3 py-1 bg-white/10 rounded-lg text-xs font-mono text-gray-300">
-                        DOM 10:00 AM
-                    </div>
+                    <div className="px-3 py-1 bg-white/10 rounded-lg text-xs font-mono text-gray-300">DOM 10:00 AM</div>
                 </div>
-                
-                <div className="space-y-3">
-                    <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/5 hover:border-indigo-500/30 transition-colors">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-xs">1</div>
-                        <div className="flex-1">
-                            <div className="text-white font-medium text-sm">Way Maker</div>
-                            <div className="text-gray-500 text-xs">G • 68 BPM</div>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/5 hover:border-indigo-500/30 transition-colors">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-xs">2</div>
-                        <div className="flex-1">
-                            <div className="text-white font-medium text-sm">La Bondad de Dios</div>
-                            <div className="text-gray-500 text-xs">A • 72 BPM</div>
-                        </div>
-                    </div>
+                <div className="space-y-3 opacity-60">
+                    <p className="text-sm text-gray-400">Tu setlist aparecerá aquí cuando crees un evento.</p>
                 </div>
-
                 <button onClick={() => setActiveTab('events')} className="mt-6 w-full py-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-sm font-bold text-gray-300 transition-all">
-                    Ver Setlist Completo
+                    Gestionar Eventos
                 </button>
             </div>
         </div>
 
-        {/* Widget 2: Acciones Rápidas */}
+        {/* Acciones Rápidas */}
         <div className="space-y-6">
-             {/* Stats Card */}
              <div className="bg-[#111] border border-white/10 p-6 rounded-3xl">
-                 <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-4">Tu Repertorio</h3>
+                 <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-4">Estado</h3>
                  <div className="flex items-baseline gap-2">
-                     <span className="text-4xl font-black text-white">124</span>
-                     <span className="text-sm text-gray-500">canciones</span>
+                     <span className="text-4xl font-black text-white">{orgId ? 'Activo' : '-'}</span>
                  </div>
-                 <div className="mt-4 h-2 w-full bg-white/10 rounded-full overflow-hidden">
-                     <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 w-[70%]"></div>
-                 </div>
-                 <p className="text-xs text-gray-500 mt-2">12 añadidas este mes</p>
+                 <p className="text-xs text-gray-500 mt-2">Organización conectada</p>
              </div>
 
-             {/* Quick Search */}
              <div 
                 onClick={() => setActiveTab('songs')}
                 className="bg-gradient-to-br from-indigo-900/20 to-[#111] border border-indigo-500/20 p-6 rounded-3xl cursor-pointer hover:border-indigo-500/50 transition-all group"
@@ -140,39 +137,46 @@ export default function Dashboard() {
                  <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center mb-4 text-white shadow-lg shadow-indigo-500/30 group-hover:scale-110 transition-transform">
                      <Search size={20} />
                  </div>
-                 <h3 className="font-bold text-white">Buscar Canción</h3>
-                 <p className="text-gray-400 text-sm mt-1">Encuentra acordes rápido.</p>
+                 <h3 className="font-bold text-white">Biblioteca</h3>
+                 <p className="text-gray-400 text-sm mt-1">Ver todas las canciones.</p>
              </div>
         </div>
-
       </div>
     </div>
   );
 
-  // --- COMPONENTE PLACEHOLDER PARA EVENTOS (Si no lo tienes aun) ---
+  // --- VISTAS PLACEHOLDER PARA EVITAR ERRORES ---
   const EventsPlaceholder = () => (
     <div className="flex flex-col items-center justify-center h-[50vh] text-center p-6 animate-in fade-in">
         <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6">
             <Calendar size={40} className="text-gray-600" />
         </div>
-        <h2 className="text-2xl font-bold text-white mb-2">Calendario de Eventos</h2>
-        <p className="text-gray-400 max-w-md">Aquí podrás crear y gestionar los servicios dominicales y ensayos.</p>
-        <button className="mt-6 px-6 py-3 bg-white text-black rounded-full font-bold text-sm hover:bg-gray-200 transition-colors">
-            Crear primer evento
-        </button>
+        <h2 className="text-2xl font-bold text-white mb-2">Eventos</h2>
+        <p className="text-gray-400 max-w-md">Pronto podrás gestionar tus servicios aquí.</p>
     </div>
   );
 
-  // --- RENDERIZADO PRINCIPAL ---
+  const TeamPlaceholder = () => (
+    <div className="flex flex-col items-center justify-center h-[50vh] text-center p-6 animate-in fade-in">
+        <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6">
+            <Users size={40} className="text-gray-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-white mb-2">Equipo Global</h2>
+        <p className="text-gray-400 max-w-md">Gestiona los miembros de tu organización aquí.</p>
+    </div>
+  );
+
+  if (loading) return <div className="h-screen w-full flex items-center justify-center bg-[#030303]"><Loader2 className="animate-spin text-indigo-500"/></div>;
+
   return (
     <div className="min-h-screen bg-[#030303] text-white font-sans selection:bg-indigo-500 selection:text-white flex relative overflow-hidden">
       
-      {/* BACKGROUND EFFECTS */}
+      {/* FONDO */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
       </div>
 
-      {/* --- SIDEBAR (SOLO DESKTOP) --- */}
+      {/* --- SIDEBAR --- */}
       <aside className="hidden md:flex w-64 flex-col border-r border-white/5 bg-[#050505] relative z-20 h-screen sticky top-0">
         <div className="p-6 flex items-center gap-3 mb-6">
             <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
@@ -203,7 +207,6 @@ export default function Dashboard() {
             ))}
         </nav>
 
-        {/* PERFIL MINI EN SIDEBAR */}
         <div className="p-4 border-t border-white/5">
             <button 
                 onClick={() => setActiveTab('profile')}
@@ -229,11 +232,11 @@ export default function Dashboard() {
         </div>
       </aside>
 
-      {/* --- MAIN CONTENT --- */}
+      {/* --- CONTENIDO PRINCIPAL --- */}
       <main className="flex-1 relative z-10 h-screen overflow-y-auto pb-24 md:pb-0">
          <div className="max-w-6xl mx-auto p-4 md:p-8">
             
-            {/* Header Móvil (Solo visible en celular) */}
+            {/* Header Móvil */}
             <div className="md:hidden flex items-center justify-between mb-8">
                 <div className="flex items-center gap-2">
                     <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
@@ -254,15 +257,19 @@ export default function Dashboard() {
 
             {/* RENDERIZADO DE PESTAÑAS */}
             {activeTab === 'home' && renderHome()}
-            {activeTab === 'songs' && <SongLibrary />}
-            {activeTab === 'events' && <EventsPlaceholder />} {/* O usa <EventManager /> si lo tienes */}
-            {activeTab === 'team' && <TeamManager />}
+            
+            {/* Aquí pasamos orgId a SongLibrary para que no falle */}
+            {activeTab === 'songs' && orgId && <SongLibrary orgId={orgId} />}
+            {activeTab === 'songs' && !orgId && <div className="text-center p-10 text-gray-500">Cargando organización...</div>}
+            
+            {activeTab === 'events' && <EventsPlaceholder />}
+            {activeTab === 'team' && <TeamPlaceholder />}
             {activeTab === 'profile' && <ProfileSettings />}
          
          </div>
       </main>
 
-      {/* --- BOTTOM NAVIGATION (SOLO MÓVIL) --- */}
+      {/* --- MENU MÓVIL INFERIOR --- */}
       <nav className="md:hidden fixed bottom-0 left-0 w-full bg-[#050505]/90 backdrop-blur-xl border-t border-white/10 z-50 pb-safe">
         <div className="flex justify-around items-center p-2">
             {[
