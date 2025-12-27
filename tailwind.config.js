@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  darkMode: 'class', // Importante para tu botón de sol/luna
+  darkMode: 'selector', // <--- ESTE ES EL CAMBIO CLAVE (antes era 'class')
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
