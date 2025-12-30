@@ -3,7 +3,18 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Music, Loader2, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import { Song } from '@/types/database'; 
+
+// Definición de tipos
+export interface Song {
+  id: string;
+  title: string;
+  artist: string;
+  bpm: number;
+  default_key: string;
+  content?: string;
+  duration_seconds?: number;
+  organization_id?: string;
+}
 
 interface NewSongModalProps {
   isOpen: boolean;
@@ -19,7 +30,6 @@ export default function NewSongModal({ isOpen, onClose, onSongCreated }: NewSong
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Limpiar campos al abrir
   useEffect(() => {
     if (isOpen) {
       setTitle('');
@@ -40,23 +50,19 @@ export default function NewSongModal({ isOpen, onClose, onSongCreated }: NewSong
     setError('');
 
     try {
-      // 1. Verificar usuario
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No estás autenticado");
 
-      // 2. BUSCAR MI ORGANIZACIÓN (CORREGIDO)
-      // Buscamos en la tabla de miembros
       const { data: member, error: memberError } = await supabase
         .from('organization_members')
         .select('organization_id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (memberError || !member?.organization_id) {
-        throw new Error("No se encontró tu banda. Intenta recargar la página.");
+        throw new Error("No se encontró tu banda. Intenta recargar.");
       }
 
-      // 3. Insertar Canción (con duración por defecto)
       const { data, error: insertError } = await supabase
         .from('songs')
         .insert([
@@ -66,8 +72,8 @@ export default function NewSongModal({ isOpen, onClose, onSongCreated }: NewSong
             bpm: bpm ? parseInt(bpm) : null,
             default_key: defaultKey,
             content: '', 
-            organization_id: member.organization_id, // ID Correcto
-            duration_seconds: 300 // Valor por defecto
+            organization_id: member.organization_id,
+            duration_seconds: 300
           }
         ])
         .select()
@@ -80,7 +86,7 @@ export default function NewSongModal({ isOpen, onClose, onSongCreated }: NewSong
 
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Error al guardar la canción');
+      setError(err.message || 'Error al guardar');
     } finally {
       setLoading(false);
     }
@@ -121,7 +127,7 @@ export default function NewSongModal({ isOpen, onClose, onSongCreated }: NewSong
         <div className="p-4 bg-zinc-950 border-t border-white/10 flex justify-end gap-3">
           <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-bold text-gray-400 hover:text-white hover:bg-white/5 transition-colors">Cancelar</button>
           <button onClick={handleSave} disabled={loading} className="px-6 py-2 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-            {loading ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} Guardar Canción
+            {loading ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} Guardar
           </button>
         </div>
       </div>

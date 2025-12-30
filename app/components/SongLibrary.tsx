@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Music, Edit3, Save, ArrowLeft, Loader2, Trash2 } from 'lucide-react';
+import { Search, Plus, Music, Edit3, Save, ArrowLeft, Loader2, Trash2, Eye, Lock } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 
 // Definición de tipos
@@ -17,10 +17,11 @@ export interface Song {
 }
 
 interface SongLibraryProps {
-  orgId: string; // Hacemos obligatorio el ID para garantizar seguridad
+  orgId: string;
+  userRole: string | null; // <--- NUEVO: Necesitamos saber el rol
 }
 
-export default function SongLibrary({ orgId }: SongLibraryProps) {
+export default function SongLibrary({ orgId, userRole }: SongLibraryProps) {
   const [songs, setSongs] = useState<Song[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
@@ -28,7 +29,10 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
   const [editingSong, setEditingSong] = useState<Song | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // CARGAR CANCIONES (Solo una vez al entrar)
+  // --- SEGURIDAD: ¿QUIÉN MANDA AQUÍ? ---
+  const isAdmin = userRole === 'admin' || userRole === 'owner';
+
+  // CARGAR CANCIONES
   useEffect(() => {
     if (orgId) fetchSongs();
   }, [orgId]);
@@ -36,7 +40,6 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
   const fetchSongs = async () => {
     setLoading(true);
     try {
-        // 🔒 SEGURIDAD: Filtramos directamente por el orgId recibido
         const { data, error } = await supabase
             .from('songs')
             .select('*')
@@ -52,7 +55,7 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
     }
   };
 
-  // 🔍 BÚSQUEDA LOCAL (Instantánea)
+  // BÚSQUEDA LOCAL
   const filteredSongs = songs.filter(song => 
     song.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     song.artist.toLowerCase().includes(searchTerm.toLowerCase())
@@ -60,7 +63,7 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingSong) return;
+    if (!editingSong || !isAdmin) return; // Doble seguridad
     setIsSaving(true);
 
     try {
@@ -72,12 +75,12 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
             bpm: editingSong.bpm,
             default_key: editingSong.default_key,
             content: editingSong.content,
-            organization_id: orgId, // Usamos el ID seguro
+            organization_id: orgId,
             duration_seconds: 300
         }]).select().single();
         
         if (error) throw error;
-        setSongs([data, ...songs]); // Actualizamos la lista localmente
+        setSongs([data, ...songs]); 
       } else {
         // ACTUALIZAR
         const { error } = await supabase
@@ -92,7 +95,6 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
           .eq('id', editingSong.id);
 
         if (error) throw error;
-        // Actualizamos la lista localmente sin recargar todo
         setSongs(songs.map(s => s.id === editingSong.id ? editingSong : s));
       }
 
@@ -105,7 +107,9 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
   };
 
   const handleDelete = async (id: string) => {
+    if (!isAdmin) return;
     if (!confirm("¿Seguro que quieres borrar esta canción?")) return;
+    
     const { error } = await supabase.from('songs').delete().eq('id', id);
     if (!error) {
       setSongs(songs.filter(s => s.id !== id));
@@ -116,6 +120,7 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
   };
 
   const handleNewSong = () => {
+    if (!isAdmin) return;
     setEditingSong({
       id: 'new',
       title: '',
@@ -127,9 +132,10 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
     });
   };
 
-  const inputBaseClass = "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 bg-white placeholder:text-gray-400 font-medium";
+  // Estilo base para inputs (cambia si está deshabilitado)
+  const inputBaseClass = `w-full px-4 py-3 border rounded-lg outline-none font-medium transition-colors ${isAdmin ? 'border-gray-300 focus:ring-2 focus:ring-blue-500 bg-white text-gray-900' : 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'}`;
 
-  // --- VISTA EDITOR ---
+  // --- VISTA DETALLE (EDITOR O LECTOR) ---
   if (editingSong) {
     return (
       <div className="max-w-4xl mx-auto pb-20 animate-in slide-in-from-right duration-300">
@@ -140,33 +146,63 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
           >
             <ArrowLeft size={20} /> Volver a la lista
           </button>
-          <h2 className="text-xl font-bold text-gray-900">
-            {editingSong.id === 'new' ? 'Nueva Canción' : 'Editar Canción'}
-          </h2>
+          
+          <div className="flex items-center gap-2">
+            {!isAdmin && <span className="text-xs font-bold text-orange-500 bg-orange-50 px-3 py-1 rounded-full flex items-center gap-1"><Lock size={12}/> Modo Lectura</span>}
+            <h2 className="text-xl font-bold text-gray-900">
+                {editingSong.id === 'new' ? 'Nueva Canción' : isAdmin ? 'Editar Canción' : 'Detalles de la Canción'}
+            </h2>
+          </div>
         </div>
 
-        <form onSubmit={handleSave} className="bg-white p-8 rounded-xl border border-gray-200 shadow-sm space-y-6">
+        <form onSubmit={handleSave} className="bg-white p-8 rounded-xl border border-gray-200 shadow-sm space-y-6 relative">
+          
+          {/* Inputs protegidos con disabled={!isAdmin} */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Título</label>
-              <input required className={inputBaseClass} value={editingSong.title} onChange={e => setEditingSong({...editingSong, title: e.target.value})} placeholder="Ej. Alza tus ojos" />
+              <input 
+                required 
+                disabled={!isAdmin} 
+                className={inputBaseClass} 
+                value={editingSong.title} 
+                onChange={e => setEditingSong({...editingSong, title: e.target.value})} 
+                placeholder="Ej. Alza tus ojos" 
+              />
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Artista</label>
-              <input className={inputBaseClass} value={editingSong.artist || ''} onChange={e => setEditingSong({...editingSong, artist: e.target.value})} placeholder="Ej. Marco Barrientos" />
+              <input 
+                disabled={!isAdmin}
+                className={inputBaseClass} 
+                value={editingSong.artist || ''} 
+                onChange={e => setEditingSong({...editingSong, artist: e.target.value})} 
+                placeholder="Ej. Marco Barrientos" 
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Tono Original</label>
-              <select className={inputBaseClass} value={editingSong.default_key || 'C'} onChange={e => setEditingSong({...editingSong, default_key: e.target.value})}>
+              <select 
+                disabled={!isAdmin}
+                className={inputBaseClass} 
+                value={editingSong.default_key || 'C'} 
+                onChange={e => setEditingSong({...editingSong, default_key: e.target.value})}
+              >
                  {['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'].map(k => (<option key={k} value={k}>{k}</option>))}
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-2">BPM</label>
-              <input type="number" className={inputBaseClass} value={editingSong.bpm} onChange={e => setEditingSong({...editingSong, bpm: parseInt(e.target.value) || 0})} />
+              <input 
+                type="number" 
+                disabled={!isAdmin}
+                className={inputBaseClass} 
+                value={editingSong.bpm} 
+                onChange={e => setEditingSong({...editingSong, bpm: parseInt(e.target.value) || 0})} 
+              />
             </div>
           </div>
 
@@ -177,24 +213,28 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
              </div>
              <textarea 
                rows={15}
+               disabled={!isAdmin}
                placeholder="Pega aquí la letra..."
-               className={`${inputBaseClass} font-mono text-sm leading-relaxed whitespace-pre`}
+               className={`${inputBaseClass} font-mono text-sm leading-relaxed whitespace-pre min-h-[400px]`}
                value={editingSong.content || ''}
                onChange={e => setEditingSong({...editingSong, content: e.target.value})}
              />
           </div>
 
-          <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
-             {editingSong.id !== 'new' && (
-                <button type="button" onClick={() => handleDelete(editingSong.id)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg font-medium transition-colors mr-auto flex items-center gap-2">
-                  <Trash2 size={18}/> Eliminar
+          {/* BARRA DE ACCIONES: SOLO VISIBLE PARA ADMIN */}
+          {isAdmin && (
+              <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
+                {editingSong.id !== 'new' && (
+                    <button type="button" onClick={() => handleDelete(editingSong.id)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg font-medium transition-colors mr-auto flex items-center gap-2">
+                    <Trash2 size={18}/> Eliminar
+                    </button>
+                )}
+                <button type="button" onClick={() => setEditingSong(null)} className="px-6 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">Cancelar</button>
+                <button type="submit" disabled={isSaving} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm disabled:opacity-50">
+                {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} Guardar Cambios
                 </button>
-             )}
-             <button type="button" onClick={() => setEditingSong(null)} className="px-6 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">Cancelar</button>
-             <button type="submit" disabled={isSaving} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm disabled:opacity-50">
-               {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} Guardar Cambios
-             </button>
-          </div>
+            </div>
+          )}
         </form>
       </div>
     );
@@ -202,12 +242,19 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
 
   // --- VISTA LISTA ---
   return (
-    <div className="max-w-5xl mx-auto space-y-6 h-full flex flex-col">
+    <div className="max-w-5xl mx-auto space-y-6 h-full flex flex-col p-6">
        <div className="flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
-          <h1 className="text-2xl font-bold text-gray-900">Biblioteca de Canciones</h1>
-          <button onClick={handleNewSong} className="bg-black hover:bg-gray-800 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg transition-all">
-            <Plus size={20} /> Nueva Canción
-          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Biblioteca de Canciones</h1>
+            {!isAdmin && <p className="text-xs text-gray-500 mt-1 flex items-center gap-1"><Lock size={10}/> Modo Lectura: Solo el líder puede editar.</p>}
+          </div>
+          
+          {/* Botón crear oculto para miembros */}
+          {isAdmin && (
+            <button onClick={handleNewSong} className="bg-black hover:bg-gray-800 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg transition-all">
+                <Plus size={20} /> Nueva Canción
+            </button>
+          )}
        </div>
 
        <div className="relative shrink-0">
@@ -246,7 +293,12 @@ export default function SongLibrary({ orgId }: SongLibraryProps) {
                                 <span className="text-xs font-bold bg-gray-100 px-2 py-0.5 rounded text-gray-600 border border-gray-200">{song.default_key}</span>
                                 <span className="text-[10px] text-gray-400 mt-1">{song.bpm} bpm</span>
                             </div>
-                            <Edit3 size={18} className="text-gray-300 group-hover:text-blue-500 transition-colors" />
+                            {/* Icono cambia según rol: Lápiz (Admin) o Ojo (Miembro) */}
+                            {isAdmin ? (
+                                <Edit3 size={18} className="text-gray-300 group-hover:text-blue-500 transition-colors" />
+                            ) : (
+                                <Eye size={18} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
+                            )}
                         </div>
                     </div>
                     ))}
